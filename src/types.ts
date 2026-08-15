@@ -72,7 +72,9 @@ export interface IngressSpec {
 export interface TemplateContext {
   project: ProjectSpec;
   service: ServiceSpec;
+  services: ServiceSpec[];
   allServices: ServiceSpec[];
+  databases: DatabaseSpec[];
   allDatabases: DatabaseSpec[];
   generatedAt: string;
   ingress?: IngressSpec;

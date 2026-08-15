@@ -46,7 +46,9 @@ export class ProjectGenerator {
     return {
       project: this.spec,
       service,
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -140,7 +142,9 @@ export class ProjectGenerator {
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -155,7 +159,9 @@ export class ProjectGenerator {
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -331,7 +337,9 @@ spec:
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -349,7 +357,9 @@ spec:
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -365,7 +375,9 @@ spec:
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };
@@ -381,7 +393,9 @@ spec:
     const context: TemplateContext = {
       project: this.spec,
       service: this.spec.services[0],
+      services: this.spec.services,
       allServices: this.spec.services,
+      databases: this.spec.databases || [],
       allDatabases: this.spec.databases || [],
       generatedAt: new Date().toISOString(),
     };

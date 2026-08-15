@@ -130,13 +130,13 @@ services:
 <%/.%>
 <%/env%>
 <%#healthCheck%>
-<%#path%>
+<%#healthCheck.path%>
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:<%port%><%path%>"]
-      interval: "<%interval%>"
-      timeout: "<%timeout%>"
-      retries: <%retries%>
-<%/path%>
+      test: ["CMD", "curl", "-f", "http://localhost:<%port%><%{healthCheck.path}%>"]
+      interval: "<%healthCheck.interval%>"
+      timeout: "<%healthCheck.timeout%>"
+      retries: <%healthCheck.retries%>
+<%/healthCheck.path%>
 <%/healthCheck%>
     depends_on:
 <%#dependencies%>
