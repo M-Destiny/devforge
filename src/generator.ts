@@ -1,5 +1,6 @@
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
+import * as Diff from 'diff';
 import type {
   ProjectSpec,
   ServiceSpec,
@@ -10,16 +11,42 @@ import type {
 import { renderTemplate } from './templates.js';
 import { validateSpec } from './spec-parser.js';
 
+export interface GenerateOptions {
+  /** When true, do not write any files. The result still lists what would be written. */
+  dryRun?: boolean;
+  /** When true, return a diff for each existing file vs. the new content. */
+  diff?: boolean;
+  /** Overwrite existing files without prompting. Required when diff is false and files exist. */
+  overwrite?: boolean;
+}
+
+export interface FileDiff {
+  path: string;
+  status: 'created' | 'unchanged' | 'modified' | 'skipped';
+  diff?: string;
+}
+
+export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
+  dryRun: false,
+  diff: false,
+  overwrite: false,
+};
+
 export class ProjectGenerator {
   private spec: ProjectSpec;
   private outputDir: string;
   private filesGenerated: string[] = [];
+  private filesSkipped: string[] = [];
+  private filesUnchanged: string[] = [];
+  private diffs: FileDiff[] = [];
   private errors: string[] = [];
   private warnings: string[] = [];
+  private options: GenerateOptions;
 
-  constructor(spec: ProjectSpec, outputDir: string = './output') {
+  constructor(spec: ProjectSpec, outputDir: string = './output', options: GenerateOptions = {}) {
     this.spec = spec;
     this.outputDir = outputDir;
+    this.options = { ...DEFAULT_GENERATE_OPTIONS, ...options };
   }
 
   private getNodeVersion(): string {
@@ -35,6 +62,7 @@ export class ProjectGenerator {
   }
 
   private async ensureDir(path: string): Promise<void> {
+    if (this.options.dryRun) return;
     try {
       await mkdir(path, { recursive: true });
     } catch {
@@ -74,8 +102,61 @@ export class ProjectGenerator {
     return errors;
   }
 
+  /**
+   * Writes (or, in dry-run mode, pretends to write) a file to disk. Returns
+   * the resulting FileDiff entry so the caller can render a summary.
+   */
+  private async writeRenderedFile(filePath: string, content: string): Promise<void> {
+    let status: FileDiff['status'] = 'created';
+    let diffOutput: string | undefined;
+
+    try {
+      const existing = await readFile(filePath, 'utf-8');
+      if (existing === content) {
+        status = 'unchanged';
+      } else {
+        const fileDiffs = Diff.createTwoFilesPatch(
+          filePath,
+          filePath,
+          existing,
+          content,
+          'existing',
+          'generated'
+        );
+        diffOutput = fileDiffs;
+        if (this.options.overwrite) {
+          status = 'modified';
+        } else {
+          status = 'skipped';
+          this.warnings.push(
+            `File exists and would be overwritten: ${filePath} (use --overwrite to replace, --diff to preview)`
+          );
+        }
+      }
+    } catch {
+      // File doesn't exist — that's fine, we'll create it.
+      status = 'created';
+    }
+
+    if (status === 'skipped') {
+      this.filesSkipped.push(filePath);
+    } else if (status === 'unchanged') {
+      this.filesUnchanged.push(filePath);
+    } else {
+      this.filesGenerated.push(filePath);
+    }
+    this.diffs.push({ path: filePath, status, diff: diffOutput });
+
+    if (status !== 'skipped' && status !== 'unchanged' && !this.options.dryRun) {
+      await writeFile(filePath, content, 'utf-8');
+    }
+  }
+
   async generate(): Promise<GenerationResult> {
     this.filesGenerated = [];
+    this.filesSkipped = [];
+    this.filesUnchanged = [];
+    this.diffs = [];
     this.errors = [];
     this.warnings = [];
 
@@ -122,8 +203,15 @@ export class ProjectGenerator {
       // Generate nginx config
       await this.generateNginxConfig();
 
+      // Generate .dockerignore
+      await this.generateDockerignore();
+
+      // Generate k8s hardening (PDB + NetworkPolicy)
+      await this.generateK8sHardening();
+
+      const success = this.errors.length === 0;
       return {
-        success: true,
+        success,
         filesGenerated: this.filesGenerated,
         errors: this.errors,
         warnings: this.warnings,
@@ -138,38 +226,40 @@ export class ProjectGenerator {
     }
   }
 
-  private async generateDockerCompose(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
+  /** Returns the per-file diffs captured during the most recent generate() call. */
+  getDiffs(): FileDiff[] {
+    return this.diffs;
+  }
 
+  /** Returns a human-readable summary of the most recent generation. */
+  formatSummary(): string {
+    const lines: string[] = [];
+    const verb = this.options.dryRun ? 'Would generate' : 'Generated';
+    lines.push(`${verb} ${this.filesGenerated.length} file(s)`);
+    if (this.filesUnchanged.length > 0) {
+      lines.push(`Unchanged: ${this.filesUnchanged.length}`);
+    }
+    if (this.filesSkipped.length > 0) {
+      lines.push(`Skipped (would overwrite): ${this.filesSkipped.length}`);
+    }
+    if (this.warnings.length > 0) {
+      lines.push(`Warnings: ${this.warnings.length}`);
+    }
+    return lines.join('\n');
+  }
+
+  private async generateDockerCompose(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('docker-compose', context);
-    const path = join(this.outputDir, 'docker-compose.yml');
-    await writeFile(path, content, 'utf-8');
-    this.filesGenerated.push(path);
+    const filePath = join(this.outputDir, 'docker-compose.yml');
+    await this.writeRenderedFile(filePath, content);
   }
 
   private async generateMakefile(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
-
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('Makefile', context);
-    const path = join(this.outputDir, 'Makefile');
-    await writeFile(path, content, 'utf-8');
-    this.filesGenerated.push(path);
+    const filePath = join(this.outputDir, 'Makefile');
+    await this.writeRenderedFile(filePath, content);
   }
 
   private async generateServiceFiles(service: ServiceSpec): Promise<void> {
@@ -186,39 +276,33 @@ export class ProjectGenerator {
       pythonMajor: this.getPythonMajor(),
     };
     const dockerfileContent = renderTemplate(dockerfileTemplate, dockerfileContext);
-    await writeFile(join(serviceDir, 'Dockerfile'), dockerfileContent, 'utf-8');
-    this.filesGenerated.push(join(serviceDir, 'Dockerfile'));
+    await this.writeRenderedFile(join(serviceDir, 'Dockerfile'), dockerfileContent);
 
     // Generate k8s manifests
     const k8sDir = join(this.outputDir, 'k8s', 'services', service.name);
     await this.ensureDir(k8sDir);
 
-    // Deployment
     const deploymentContent = renderTemplate('k8s-deployment', this.buildContext(service));
-    await writeFile(join(k8sDir, 'deployment.yaml'), deploymentContent, 'utf-8');
-    this.filesGenerated.push(join(k8sDir, 'deployment.yaml'));
+    await this.writeRenderedFile(join(k8sDir, 'deployment.yaml'), deploymentContent);
 
-    // Service
     const serviceContent = renderTemplate('k8s-service', this.buildContext(service));
-    await writeFile(join(k8sDir, 'service.yaml'), serviceContent, 'utf-8');
-    this.filesGenerated.push(join(k8sDir, 'service.yaml'));
+    await this.writeRenderedFile(join(k8sDir, 'service.yaml'), serviceContent);
 
-    // HPA
     const hpaContent = renderTemplate('k8s-hpa', this.buildContext(service));
-    await writeFile(join(k8sDir, 'hpa.yaml'), hpaContent, 'utf-8');
-    this.filesGenerated.push(join(k8sDir, 'hpa.yaml'));
+    await this.writeRenderedFile(join(k8sDir, 'hpa.yaml'), hpaContent);
 
-    // ConfigMap
+    const pdbContent = renderTemplate('k8s-pdb', this.buildContext(service));
+    await this.writeRenderedFile(join(k8sDir, 'pdb.yaml'), pdbContent);
+
+    const netpolContent = renderTemplate('k8s-networkpolicy', this.buildContext(service));
+    await this.writeRenderedFile(join(k8sDir, 'networkpolicy.yaml'), netpolContent);
+
     const configMapContent = renderTemplate('k8s-configmap', this.buildContext(service));
-    await writeFile(join(k8sDir, 'configmap.yaml'), configMapContent, 'utf-8');
-    this.filesGenerated.push(join(k8sDir, 'configmap.yaml'));
+    await this.writeRenderedFile(join(k8sDir, 'configmap.yaml'), configMapContent);
 
-    // README
     const readmeContent = renderTemplate('service-readme', this.buildContext(service));
-    await writeFile(join(serviceDir, 'README.md'), readmeContent, 'utf-8');
-    this.filesGenerated.push(join(serviceDir, 'README.md'));
+    await this.writeRenderedFile(join(serviceDir, 'README.md'), readmeContent);
 
-    // package.json for node services
     if (service.language === 'node') {
       const pkgJson = {
         name: service.name,
@@ -240,14 +324,14 @@ export class ProjectGenerator {
           vitest: '^1.0.0',
         },
       };
-      await writeFile(join(serviceDir, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf-8');
-      this.filesGenerated.push(join(serviceDir, 'package.json'));
+      await this.writeRenderedFile(join(serviceDir, 'package.json'), JSON.stringify(pkgJson, null, 2));
     }
 
-    // requirements.txt for python services
     if (service.language === 'python') {
-      await writeFile(join(serviceDir, 'requirements.txt'), 'fastapi==0.109.0\nuvicorn==0.27.0\npydantic==2.5.0\n', 'utf-8');
-      this.filesGenerated.push(join(serviceDir, 'requirements.txt'));
+      await this.writeRenderedFile(
+        join(serviceDir, 'requirements.txt'),
+        'fastapi==0.109.0\nuvicorn==0.27.0\npydantic==2.5.0\n'
+      );
     }
   }
 
@@ -257,9 +341,7 @@ export class ProjectGenerator {
 
     for (const db of this.spec.databases!) {
       const dbManifest = this.generateDatabaseManifest(db);
-      const path = join(dbDir, `${db.name}.yaml`);
-      await writeFile(path, dbManifest, 'utf-8');
-      this.filesGenerated.push(path);
+      await this.writeRenderedFile(join(dbDir, `${db.name}.yaml`), dbManifest);
     }
   }
 
@@ -334,74 +416,89 @@ spec:
   }
 
   private async generateIngress(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
-
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('k8s-ingress', {
       ...context,
       ingress: this.spec.ingress,
     });
-    const path = join(this.outputDir, 'k8s', 'ingress.yaml');
-    await writeFile(path, content, 'utf-8');
-    this.filesGenerated.push(path);
+    await this.writeRenderedFile(join(this.outputDir, 'k8s', 'ingress.yaml'), content);
   }
 
   private async generateGitHubActions(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
-
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('github-actions', context);
     const workflowDir = join(this.outputDir, '.github', 'workflows');
     await this.ensureDir(workflowDir);
-    await writeFile(join(workflowDir, 'deploy.yml'), content, 'utf-8');
-    this.filesGenerated.push(join(workflowDir, 'deploy.yml'));
+    await this.writeRenderedFile(join(workflowDir, 'deploy.yml'), content);
   }
 
   private async generatePrometheusConfig(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
-
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('prometheus-cm', context);
     const promDir = join(this.outputDir, 'k8s', 'monitoring');
     await this.ensureDir(promDir);
-    await writeFile(join(promDir, 'prometheus-configmap.yaml'), content, 'utf-8');
-    this.filesGenerated.push(join(promDir, 'prometheus-configmap.yaml'));
+    await this.writeRenderedFile(join(promDir, 'prometheus-configmap.yaml'), content);
   }
 
   private async generateNginxConfig(): Promise<void> {
-    const context: TemplateContext = {
-      project: this.spec,
-      service: this.spec.services[0],
-      services: this.spec.services,
-      allServices: this.spec.services,
-      databases: this.spec.databases || [],
-      allDatabases: this.spec.databases || [],
-      generatedAt: new Date().toISOString(),
-    };
-
+    const context = this.buildContext(this.spec.services[0]);
     const content = renderTemplate('nginx-conf', context);
-    await writeFile(join(this.outputDir, 'nginx.conf'), content, 'utf-8');
-    this.filesGenerated.push(join(this.outputDir, 'nginx.conf'));
+    await this.writeRenderedFile(join(this.outputDir, 'nginx.conf'), content);
+  }
+
+  private async generateDockerignore(): Promise<void> {
+    const content = `# Dev / build artifacts
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git / CI
+.git/
+.gitignore
+.github/
+
+# Project-specific generated files
+output/
+devforge-output/
+k8s/
+docker-compose.yml
+nginx.conf
+*.log
+
+# Tests / fixtures
+tests/fixtures/
+*.test.*
+`;
+    await this.writeRenderedFile(join(this.outputDir, '.dockerignore'), content);
+  }
+
+  private async generateK8sHardening(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    // Cluster-wide NetworkPolicy: default-deny + allow ingress + allow DNS
+    const defaultDeny = renderTemplate('k8s-netpol-default-deny', context);
+    await this.writeRenderedFile(
+      join(this.outputDir, 'k8s', 'networkpolicies', 'default-deny.yaml'),
+      defaultDeny
+    );
+
+    // Per-service NetworkPolicy
+    for (const service of this.spec.services) {
+      const dir = join(this.outputDir, 'k8s', 'service-networkpolicies');
+      await this.ensureDir(dir);
+      const content = renderTemplate('k8s-networkpolicy-strict', this.buildContext(service));
+      await this.writeRenderedFile(join(dir, `${service.name}.yaml`), content);
+    }
   }
 }

@@ -703,6 +703,15 @@ export const templates = {
   'service-readme': serviceReadmeTemplate,
   'nginx-conf': nginxConfTemplate,
   'Makefile': makefileTemplate,
+  'k8s-pdb': k8sPDBTemplate,
+  'k8s-networkpolicy': k8sNetworkPolicyTemplate,
+  'k8s-networkpolicy-strict': k8sNetworkPolicyStrictTemplate,
+  'k8s-netpol-default-deny': k8sNetPolDefaultDenyTemplate,
+  'helm-chart': helmChartTemplate,
+  'helm-deployment': helmChartDeploymentTemplate,
+  'helm-service': helmChartServiceTemplate,
+  'helm-values': helmValuesTemplate,
+  'helm-notes': helmChartNOTES,
 };
 
 export function listTemplates(): string[] {
@@ -743,3 +752,225 @@ export function getTemplatePlaceholders(templateName: string): string[] {
   }
   return Array.from(names).sort();
 }
+// PodDisruptionBudget (k8s-pdb)
+const k8sPDBTemplate = `apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: <%service.name%>`;
+
+// Per-service NetworkPolicy (k8s-networkpolicy)
+const k8sNetworkPolicyTemplate = `apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+spec:
+  podSelector:
+    matchLabels:
+      app: <%service.name%>
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+<%#service.dependencies%>
+        - podSelector:
+            matchLabels:
+              app: <%{this}%>
+<%/service.dependencies%>
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - port: <%service.port%>
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+<%#service.dependencies%>
+    - to:
+        - podSelector:
+            matchLabels:
+              app: <%{this}%>
+      ports:
+        - port: <%service.port%>
+          protocol: TCP
+<%/service.dependencies%>`;
+
+// Cluster-wide default-deny NetworkPolicy
+const k8sNetPolDefaultDenyTemplate = `apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: <%project.namespace%>
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress`;
+
+// Stricter per-service NetworkPolicy
+const k8sNetworkPolicyStrictTemplate = `apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: <%service.name%>-strict
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+spec:
+  podSelector:
+    matchLabels:
+      app: <%service.name%>
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - port: <%service.port%>
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP`;
+
+// Helm chart — Chart.yaml
+const helmChartTemplate = `apiVersion: v2
+name: <%project.name%>
+description: <%project.name%> helm chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - microservices
+  - devforge
+home: https://github.com/<%project.github.owner%>/<%project.name%>
+maintainers:
+  - name: <%project.github.owner%>
+`;
+
+// Helm chart — deployment template
+const helmChartDeploymentTemplate = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+    app.kubernetes.io/name: <%service.name%>
+spec:
+  replicas: <%service.scaling.minReplicas%>
+  selector:
+    matchLabels:
+      app: <%service.name%>
+  template:
+    metadata:
+      labels:
+        app: <%service.name%>
+    spec:
+      containers:
+        - name: <%service.name%>
+          image: "<%service.image%>"
+          ports:
+            - name: http
+              containerPort: <%service.port%>
+          livenessProbe:
+            httpGet:
+              path: <%service.healthCheck.path%>
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+`;
+
+// Helm chart — service template
+const helmChartServiceTemplate = `apiVersion: v1
+kind: Service
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+spec:
+  type: ClusterIP
+  ports:
+    - port: <%service.port%>
+      targetPort: http
+  selector:
+    app: <%service.name%>
+`;
+
+// Helm chart — values.yaml
+const helmValuesTemplate = `# Default values for <%project.name%>.
+# This is a YAML-formatted file.
+replicaCount: 1
+
+image:
+  repository: <%project.github.owner%>/<%project.name%>
+  pullPolicy: IfNotPresent
+  tag: "0.1.0"
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+`;
+
+// Helm chart — NOTES.txt
+const helmChartNOTES = `<%project.name%> has been deployed to namespace <%project.namespace%>.
+
+Services:
+<%#services%>
+- <%name%> on port <%port%>
+<%/services%>
+`;
