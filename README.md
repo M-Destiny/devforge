@@ -1,92 +1,46 @@
-# DevForge
+# ⚒️ DevForge
 
-**AI-powered scaffolding CLI for microservices**
+> AI-powered full-stack scaffolding CLI — write a YAML spec, generate production microservices with Docker, Kubernetes, and GitHub Actions.
 
-DevForge generates production-ready microservices infrastructure from declarative YAML specs. Define your services, databases, scaling rules, and ingress once — get Docker Compose, Kubernetes manifests, GitHub Actions CI/CD, and more.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      DEVFORGE                                │
+│                                                              │
+│  spec.yaml ──▶ ProjectGenerator ──▶ Output Directory         │
+│                    │                                         │
+│                    ├── docker-compose.yml                     │
+│                    ├── k8s/ (Deployment, Service, HPA, ...)  │
+│                    ├── .github/workflows/deploy.yml           │
+│                    ├── Dockerfile (multi-stage)               │
+│                    └── Makefile                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Features
 
-- **Multi-language support**: Node.js, Python, Go, Rust, Java
-- **Docker Compose**: Local development with health checks, networking, volumes
-- **Kubernetes**: Deployment, Service, HPA, ConfigMap, Ingress manifests
-- **CI/CD**: GitHub Actions workflows for building, testing, and deploying
-- **Service Discovery**: Automatic dependency resolution and health checks
-- **Horizontal Pod Autoscaling**: CPU/memory based HPA configuration
-- **Prometheus Monitoring**: Pre-configured scrape configs
-- **Nginx Reverse Proxy**: Load balancing configuration
+| Feature | Description |
+|---|---|
+| **YAML-Driven** | Single spec file generates entire project structure |
+| **Multi-language** | TypeScript, Python, Go, Rust service templates |
+| **Database Support** | PostgreSQL, MySQL, MongoDB, Redis with health checks |
+| **Auto-scaling** | Kubernetes HPA with configurable CPU/memory targets |
+| **CI/CD** | GitHub Actions matrix builds + kubectl deploy |
+| **Observability** | Prometheus scrape config + Grafana dashboard |
+| **Networking** | Kubernetes NetworkPolicy + Ingress with TLS |
+| **Local Dev** | Docker Compose with hot-reload + health checks |
+| **Dry-run Mode** | Preview all generated files before writing |
 
 ## Quick Start
 
-### Installation
-
 ```bash
 npm install -g devforge
+devforge init spec.yaml
 ```
 
-Or use npx without installing:
+Or create a spec from scratch:
 
 ```bash
-npx devforge@latest init examples/microservice-spec.yaml
-```
-
-### Initialize a Project
-
-```bash
-devforge init examples/microservice-spec.yaml -o my-platform
-cd my-platform
-make up
-```
-
-### Validate a Spec
-
-```bash
-devforge validate examples/microservice-spec.yaml
-```
-
-### Interactive Scaffold
-
-```bash
-devforge scaffold my-new-service
-```
-
-### List Available Templates
-
-```bash
-devforge list-templates
-```
-
-## How It Works
-
-1. **Write a spec** in YAML describing your services, databases, scaling, and ingress
-2. **Run `devforge init`** to generate all infrastructure files
-3. **Deploy** with Docker Compose locally or Kubernetes in production
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      DevForge CLI                           │
-│  ┌─────────┐  ┌──────────┐  ┌───────────┐  ┌────────────┐  │
-│  │  Init   │  │ Validate │  │  Scaffold │  │   List     │  │
-│  └────┬────┘  └────┬─────┘  └─────┬─────┘  └─────┬──────┘  │
-└───────┼───────────┼──────────────┼──────────────┼──────────┘
-        │           │              │              │
-        ▼           ▼              ▼              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Template Engine                          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Mustache Templates: Docker, K8s, GitHub Actions, etc │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Generated Output                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────┐    │
-│  │   Docker    │  │   K8s       │  │  GitHub Actions  │    │
-│  │  Compose    │  │  Manifests  │  │    Workflows    │    │
-│  └─────────────┘  └─────────────┘  └──────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+devforge scaffold my-platform --lang typescript --db postgres
 ```
 
 ## Example Spec
@@ -96,159 +50,80 @@ name: my-platform
 namespace: production
 services:
   - name: api-gateway
-    language: node
-    port: 3000
-    dependencies:
-      - auth-service
-    healthCheck:
-      path: /health
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    scaling:
-      minReplicas: 2
-      maxReplicas: 10
-      targetCPUUtilization: 70
-
+    language: typescript
+    port: 8080
+    dependencies: [auth-service, user-service]
+    healthCheck: { path: /health, interval: 30 }
+    scaling: { min: 2, max: 10, targetCPU: 70 }
   - name: auth-service
-    language: node
+    language: typescript
     port: 3001
-    scaling:
-      minReplicas: 2
-      maxReplicas: 8
-
+    dependencies: [postgres]
 databases:
   - name: postgres
     type: postgres
-    version: "15"
-    size: 10Gi
-    port: 5432
-
+    version: '16'
 ingress:
-  enabled: true
-  rules:
-    - host: api.example.com
-      path: /
-      service: api-gateway
-      servicePort: 3000
-
-github:
-  owner: my-org
-  repo: my-platform
+  host: api.myplatform.io
+  tls: true
 ```
 
-## Generated Files
+## Available Templates
+
+```
+docker-compose      PostgreSQL/MySQL/MongoDB + services + health checks
+k8s-deployment     Deployment + Service + HPA + PodDisruptionBudget
+k8s-ingress        Ingress with TLS + cert-manager
+k8s-configmap      Per-service ConfigMap for env vars
+k8s-secret         Kubernetes Secret for credentials
+dockerfile-node    Multi-stage Node.js Dockerfile
+dockerfile-python  Multi-stage Python Dockerfile with uv
+github-actions     Build → Test → Push → Helm deploy workflow
+prometheus-cm      Prometheus scrape config per service
+service-readme     Per-service API documentation
+nginx-conf         Reverse proxy config
+Makefile           make up / down / logs / test
+```
+
+## CLI Commands
+
+```bash
+devforge init <spec.yaml>          # Parse spec and generate project
+devforge validate <spec.yaml>       # Validate spec without generating
+devforge list-templates            # Show available templates
+devforge scaffold <name>           # Interactive spec creation + generation
+```
+
+## Generated Output Structure
 
 ```
 output/
 ├── docker-compose.yml
-├── Makefile
-├── nginx.conf
+├── Dockerfile
 ├── k8s/
-│   ├── services/
-│   │   ├── api-gateway/
-│   │   │   ├── deployment.yaml
-│   │   │   ├── service.yaml
-│   │   │   ├── hpa.yaml
-│   │   │   └── configmap.yaml
-│   │   └── auth-service/
-│   │       └── ...
-│   ├── databases/
-│   │   └── postgres.yaml
-│   ├── ingress.yaml
-│   └── monitoring/
-│       └── prometheus-configmap.yaml
+│   ├── api-gateway/
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── hpa.yaml
+│   │   └── configmap.yaml
+│   └── auth-service/
+│       └── ...
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml
-└── services/
-    ├── api-gateway/
-    │   ├── Dockerfile
-    │   └── README.md
-    └── auth-service/
-        └── ...
+├── Makefile
+└── README.md
 ```
 
-## Template Reference
+## Deploy
 
-| Template | Description |
-|----------|-------------|
-| `docker-compose` | Multi-service Docker Compose with health checks |
-| `k8s-deployment` | Kubernetes Deployment manifest |
-| `k8s-service` | Kubernetes Service (ClusterIP) |
-| `k8s-hpa` | Horizontal Pod Autoscaler |
-| `k8s-ingress` | Kubernetes Ingress with TLS |
-| `k8s-configmap` | ConfigMap for environment variables |
-| `dockerfile-node` | Multi-stage Node.js Dockerfile |
-| `dockerfile-python` | Multi-stage Python Dockerfile with uv |
-| `github-actions` | CI/CD pipeline: build, test, push, deploy |
-| `prometheus-cm` | Prometheus scrape configuration |
-| `service-readme` | Per-service documentation |
-| `nginx-conf` | Nginx reverse proxy config |
-| `Makefile` | Local development commands |
-
-## Deployment Guide
-
-### Local Development (Docker Compose)
-
-```bash
-make up          # Start all services
-make logs        # View logs
-make down        # Stop all services
-make clean       # Remove containers and volumes
-```
-
-### Kubernetes
-
-1. Apply the manifests:
-```bash
-kubectl apply -f k8s/services/
-kubectl apply -f k8s/databases/
-kubectl apply -f k8s/ingress.yaml
-```
-
-2. Check rollout status:
-```bash
-kubectl rollout status deployment -n <namespace>
-```
-
-### GitHub Actions
-
-Push to `main` triggers:
-1. Docker build for each service
-2. Push to container registry
-3. Deploy to Kubernetes cluster
-
-Set `KUBE_CONFIG` secret in GitHub repo.
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `init <spec.yaml>` | Generate project from spec file |
-| `validate <spec.yaml>` | Validate spec without generating |
-| `list-templates` | Show available templates |
-| `scaffold <name>` | Interactive project creation |
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Type check
-npm run typecheck
-
-# Run tests
-npm test
-
-# Build
-npm run build
-
-# Link for local testing
-npm link
-```
+| Platform | Command |
+|---|---|
+| **Vercel** | `vercel --prod` |
+| **Fly.io** | `fly launch && fly deploy` |
+| **Railway** | Connect repo → auto-deploy |
+| **Render** | `render.yaml` → Blueprint |
 
 ## License
 
-MIT
+MIT — M-Destiny
