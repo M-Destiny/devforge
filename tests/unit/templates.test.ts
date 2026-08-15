@@ -76,6 +76,25 @@ describe('renderTemplate', () => {
     expect(out).toContain('logs:');
   });
 
+  it('renders the Grafana dashboard JSON with no leaked template tags', () => {
+    const out = renderTemplate('grafana-dashboard', ctx());
+    // Mustache 4 with HTML-escape default can silently drop missing keys;
+    // a leaked <%...%> substring means a placeholder wasn't resolved.
+    expect(out).not.toMatch(/<%[^%]*%>/);
+    // Sanity-check structural pieces of the Grafana JSON.
+    expect(out).toContain('"title": "demo');
+    expect(out).toContain('Services Running');
+    expect(out).toContain('Per-Service Metrics');
+    expect(out).toContain('api-gateway'); // current service name should appear
+  });
+
+  it('renders the Grafana datasource ConfigMap pointing at the in-cluster Prometheus', () => {
+    const out = renderTemplate('grafana-datasource', ctx());
+    expect(out).toContain('kind: ConfigMap');
+    expect(out).toContain('prometheus.monitoring.svc.cluster.local:9090');
+    expect(out).toContain('uid: prometheus');
+  });
+
   it('throws on unknown template names', () => {
     expect(() => renderTemplate('not-a-real-template', ctx())).toThrowError(
       /Unknown template/
