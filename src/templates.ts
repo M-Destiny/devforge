@@ -1,18 +1,23 @@
-// Mustache 4.x ships mustache.mjs as ESM with a default export; the .mjs
-// runtime exposes the engine as `default.render` (and `default.escape`, etc.)
-// while the older CJS shape exposes the same engine on the module namespace.
-// We don't care which shape we get — we just need a `.render` function we can
-// call with (template, view). The original templates.ts used a namespace cast
-// that compiled but crashed at runtime with "Mustache.render is not a function"
-// because `import * as M from 'mustache'` yields `{ default: { render: ... } }`,
-// not `{ render: ... }`.
-import mustacheImport from 'mustache';
+// Mustache 4.x ships mustache.mjs as ESM with a *default* export, but the
+// official @types/mustache typings declare a namespace of named exports. Three
+// failure modes are guarded here:
+//   1. `import * as M from 'mustache'` — runtime returns `{ default: { render } }`,
+//      so `M.render` is undefined and the cast hides the crash until first call.
+//   2. `import M from 'mustache'` — TS rejects this with TS1192 because
+//      @types/mustache has no default export, even with esModuleInterop.
+//   3. Synchronous `createRequire` import — works on both shapes.
+// We use shape (3) so the runtime is correct AND the types resolve cleanly.
+import { createRequire } from 'module';
 import type { TemplateContext } from './types.js';
 
-const Mustache = mustacheImport as unknown as {
+const nodeRequire = createRequire(import.meta.url);
+const Mustache = nodeRequire('mustache') as {
   render: (template: string, view: unknown, partials?: unknown, config?: unknown) => string;
   escape: (text: string) => string;
   parse: (template: string, tags?: [string, string]) => unknown;
+  Writer: unknown;
+  Context: unknown;
+  Scanner: unknown;
 };
 
 const dockerfileNode = `{{=<% %>=}}# syntax=docker/dockerfile:1
