@@ -85,7 +85,8 @@ describe('renderTemplate', () => {
     expect(out).toContain('"title": "demo');
     expect(out).toContain('Services Running');
     expect(out).toContain('Per-Service Metrics');
-    expect(out).toContain('api-gateway'); // current service name should appear
+    // The single service in the spec ("api") should drive one set of panels.
+    expect(out).toContain('api — Request Rate');
   });
 
   it('renders the Grafana datasource ConfigMap pointing at the in-cluster Prometheus', () => {
