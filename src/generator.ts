@@ -209,6 +209,9 @@ export class ProjectGenerator {
       // Generate k8s hardening (PDB + NetworkPolicy)
       await this.generateK8sHardening();
 
+      // Generate Grafana provisioning (dashboard + datasource + provider)
+      await this.generateGrafana();
+
       const success = this.errors.length === 0;
       return {
         success,
