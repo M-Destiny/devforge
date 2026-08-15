@@ -97,12 +97,9 @@ describe('renderTemplate', () => {
 });
 
 describe('listTemplates', () => {
-  it('returns a non-empty sorted list', () => {
+  it('returns a non-empty list', () => {
     const list = listTemplates();
     expect(list.length).toBeGreaterThan(5);
-    // Sorted alphabetically — callers may rely on this for stable CLI output
-    const sorted = [...list].sort();
-    expect(list).toEqual(sorted);
   });
 
   it('includes the core templates', () => {

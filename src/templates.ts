@@ -969,6 +969,266 @@ Services:
 <%/services%>
 `;
 
+// Grafana dashboard ConfigMap — provisioned alongside Prometheus so a fresh
+// cluster has working visualizations the moment `kubectl apply` finishes.
+// Generates a service-by-service row with request-rate / error-rate / latency
+// panels, plus a top-level cluster health row.
+const grafanaDashboardTemplate = `{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Cluster Health",
+      "id": 1,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Services Running",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "count(kube_deployment_status_replicas_available{namespace=\\"<%project.namespace%>\\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pods Ready",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(kube_deployment_status_replicas_ready{namespace=\\"<%project.namespace%>\\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "CPU Usage (cores)",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\\"<%project.namespace%>\\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Memory Usage",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(container_memory_working_set_bytes{namespace=\\"<%project.namespace%>\\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 2
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Per-Service Metrics",
+      "id": 10,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false,
+      "panels": []
+    }<%#services%>,
+    {
+      "type": "timeseries",
+      "title": "<%name%> — Request Rate",
+      "id": <%id.request%>,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": <%id.y%> },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{namespace=\\"<%project.namespace%>\\",job=\\"<%name%>\\"}[5m]))",
+          "legendFormat": "{{code}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "<%name%> — Error Rate",
+      "id": <%id.error%>,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": <%id.y%> },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{namespace=\\"<%project.namespace%>\\",job=\\"<%name%>\\",code=~\\"5..\\"}[5m])) / sum(rate(http_requests_total{namespace=\\"<%project.namespace%>\\",job=\\"<%name%>\\"}[5m]))",
+          "legendFormat": "error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "<%name%> — p95 Latency",
+      "id": <%id.latency%>,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": <%id.y%> },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\\"<%project.namespace%>\\",job=\\"<%name%>\\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10
+          }
+        }
+      }
+    }<%/services%>
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["devforge", "<%project.name%>"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "<%project.name%> — Service Overview",
+  "uid": "<%project.name%>-overview",
+  "version": 1,
+  "weekStart": ""
+}
+`;
+
+// Grafana datasource ConfigMap — points the provisioned dashboard at the
+// in-cluster Prometheus service. Sidecar provisioning reads this ConfigMap
+// from /etc/grafana/provisioning/datasources/.
+const grafanaDatasourceTemplate = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-prometheus
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://prometheus.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: "15s"
+`;
+
+// Grafana dashboard provider ConfigMap — sidecar provisioning auto-loads any
+// dashboard dropped into /etc/grafana/provisioning/dashboards/.
+const grafanaDashboardProviderTemplate = `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: devforge
+        orgId: 1
+        folder: "DevForge"
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/provisioning/dashboards
+`;
+
 // Registry of all templates — placed after every const declaration to avoid
 // TDZ (temporal dead zone) forward references to k8s/helm templates below.
 export const templates = {
@@ -994,4 +1254,7 @@ export const templates = {
   'helm-service': helmChartServiceTemplate,
   'helm-values': helmValuesTemplate,
   'helm-notes': helmChartNOTES,
+  'grafana-dashboard': grafanaDashboardTemplate,
+  'grafana-datasource': grafanaDatasourceTemplate,
+  'grafana-dashboard-provider': grafanaDashboardProviderTemplate,
 };
