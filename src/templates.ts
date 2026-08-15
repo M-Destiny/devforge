@@ -712,7 +712,14 @@ export function renderTemplate(templateName: string, context: TemplateContext): 
   if (!template) {
     throw new Error(`Unknown template: ${templateName}`);
   }
-  return Mustache.render(template, context);
+  // Configure delimiters per-tag via the Mustache.js Writer config:
+  //   <% %> for variable interpolation
+  //   <%{ %> %> for raw output (no HTML escaping)
+  // This is the supported, idiomatic way to override delimiters without
+  // adding a `{{=<% %>=}}` header to every template.
+  return Mustache.render(template, context, {}, {
+    tags: ['<%', '%>'],
+  } as unknown);
 }
 
 /**
