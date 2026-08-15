@@ -504,4 +504,52 @@ tests/fixtures/
       await this.writeRenderedFile(join(svcNetpolDir, `${service.name}.yaml`), content);
     }
   }
+
+  // Grafana sidecar provisioning: dashboard JSON + Prometheus datasource +
+  // dashboard provider. Drop these into k8s/monitoring so a fresh `kubectl
+  // apply` ships working visualizations alongside Prometheus.
+  private async generateGrafana(): Promise<void> {
+    const monitoringDir = join(this.outputDir, 'k8s', 'monitoring');
+    await this.ensureDir(monitoringDir);
+    const baseContext = this.buildContext(this.spec.services[0]);
+
+    // Datasource + dashboard-provider ConfigMaps — cluster-scoped, no
+    // per-service data, so a single render with the first service's context
+    // is sufficient.
+    await this.writeRenderedFile(
+      join(monitoringDir, 'grafana-datasource.yaml'),
+      renderTemplate('grafana-datasource', baseContext)
+    );
+    await this.writeRenderedFile(
+      join(monitoringDir, 'grafana-dashboard-provider.yaml'),
+      renderTemplate('grafana-dashboard-provider', baseContext)
+    );
+
+    // Dashboard — needs per-service numeric ids and y-coordinates that the
+    // template can't compute itself (Mustache has no arithmetic). Inject
+    // those here so the rendered JSON is valid Grafana. We spread each
+    // ServiceSpec so the result still satisfies the TemplateContext type.
+    const dashboardServices = this.spec.services.map((svc, idx) => {
+      const base = 1000 + idx * 100;
+      const y = 6 + idx * 8;
+      return {
+        ...svc,
+        id: {
+          request: base + 1,
+          error: base + 2,
+          latency: base + 3,
+          y,
+        },
+      };
+    });
+    const dashboardContext: TemplateContext = {
+      ...baseContext,
+      services: dashboardServices as unknown as ServiceSpec[],
+      allServices: dashboardServices as unknown as ServiceSpec[],
+    };
+    await this.writeRenderedFile(
+      join(monitoringDir, 'grafana-dashboard.json'),
+      renderTemplate('grafana-dashboard', dashboardContext)
+    );
+  }
 }

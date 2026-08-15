@@ -114,6 +114,13 @@ describe('listTemplates', () => {
       expect(list).toContain(name);
     }
   });
+
+  it('includes the Grafana provisioning templates', () => {
+    const list = listTemplates();
+    expect(list).toContain('grafana-dashboard');
+    expect(list).toContain('grafana-datasource');
+    expect(list).toContain('grafana-dashboard-provider');
+  });
 });
 
 describe('getTemplatePlaceholders', () => {
