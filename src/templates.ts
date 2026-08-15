@@ -1,5 +1,19 @@
-import * as Mustache from 'mustache';
+// Mustache 4.x ships mustache.mjs as ESM with a default export; the .mjs
+// runtime exposes the engine as `default.render` (and `default.escape`, etc.)
+// while the older CJS shape exposes the same engine on the module namespace.
+// We don't care which shape we get — we just need a `.render` function we can
+// call with (template, view). The original templates.ts used a namespace cast
+// that compiled but crashed at runtime with "Mustache.render is not a function"
+// because `import * as M from 'mustache'` yields `{ default: { render: ... } }`,
+// not `{ render: ... }`.
+import mustacheImport from 'mustache';
 import type { TemplateContext } from './types.js';
+
+const Mustache = mustacheImport as unknown as {
+  render: (template: string, view: unknown, partials?: unknown, config?: unknown) => string;
+  escape: (text: string) => string;
+  parse: (template: string, tags?: [string, string]) => unknown;
+};
 
 const dockerfileNode = `{{=<% %>=}}# syntax=docker/dockerfile:1
 FROM node:{{{nodeVersion}}} AS builder
@@ -693,5 +707,25 @@ export function renderTemplate(templateName: string, context: TemplateContext): 
   if (!template) {
     throw new Error(`Unknown template: ${templateName}`);
   }
-  return (Mustache as unknown as { render: (t: string, c: object) => string }).render(template, context);
+  return Mustache.render(template, context);
+}
+
+/**
+ * Returns the list of placeholder tags ({{var}}) used in a template, after
+ * stripping any non-printing artifacts. Used by the template-validation
+ * pipeline to detect missing context keys before writing files.
+ */
+export function getTemplatePlaceholders(templateName: string): string[] {
+  const template = (templates as Record<string, string>)[templateName];
+  if (!template) {
+    throw new Error(`Unknown template: ${templateName}`);
+  }
+  const matches = template.match(/{{{?\s*[A-Za-z0-9_.]+\s*}}}?/g) || [];
+  const names = new Set<string>();
+  for (const raw of matches) {
+    const inner = raw.replace(/[{}\s]/g, '');
+    const head = inner.split('.')[0]?.split('[')[0];
+    if (head) names.add(head);
+  }
+  return Array.from(names).sort();
 }
