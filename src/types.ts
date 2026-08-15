@@ -1,0 +1,86 @@
+export interface HealthCheck {
+  path?: string;
+  port?: number;
+  interval?: string;
+  timeout?: string;
+  retries?: number;
+}
+
+export interface Scaling {
+  minReplicas?: number;
+  maxReplicas?: number;
+  targetCPUUtilization?: number;
+  targetMemoryUtilization?: number;
+}
+
+export interface ServiceSpec {
+  name: string;
+  language: 'node' | 'python' | 'go' | 'rust' | 'java';
+  port: number;
+  dependencies?: string[];
+  env?: Record<string, string>;
+  healthCheck?: HealthCheck;
+  scaling?: Scaling;
+  image?: string;
+  command?: string[];
+  args?: string[];
+}
+
+export interface DatabaseSpec {
+  name: string;
+  type: 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'elasticsearch';
+  version: string;
+  size?: string;
+  port?: number;
+}
+
+export interface IngressRule {
+  host: string;
+  path: string;
+  service: string;
+  servicePort: number;
+}
+
+export interface IngressTLS {
+  hosts: string[];
+  secretName: string;
+}
+
+export interface ProjectSpec {
+  name: string;
+  namespace: string;
+  services: ServiceSpec[];
+  databases?: DatabaseSpec[];
+  ingress?: {
+    enabled: boolean;
+    rules?: IngressRule[];
+    tls?: IngressTLS[];
+  };
+  github?: {
+    owner: string;
+    repo: string;
+    branch?: string;
+  };
+}
+
+export interface IngressSpec {
+  enabled: boolean;
+  rules?: IngressRule[];
+  tls?: IngressTLS[];
+}
+
+export interface TemplateContext {
+  project: ProjectSpec;
+  service: ServiceSpec;
+  allServices: ServiceSpec[];
+  allDatabases: DatabaseSpec[];
+  generatedAt: string;
+  ingress?: IngressSpec;
+}
+
+export interface GenerationResult {
+  success: boolean;
+  filesGenerated: string[];
+  errors: string[];
+  warnings: string[];
+}

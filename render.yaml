@@ -1,0 +1,15 @@
+# Render.com Blueprint — free tier
+# Deploy: render.com/blueprints → Connect this repo
+
+services:
+  - type: web
+    name: devforge
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: node dist/cli.js --version
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production

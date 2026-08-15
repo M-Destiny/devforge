@@ -1,0 +1,18 @@
+{
+  "name": "devforge",
+  "builds": [{ "src": "src/**/*", "use": "@vercel/node" }],
+  "routes": [{ "src": "/(.*)", "dest": "src/cli.js" }],
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "regions": ["iad1", "sfo1", "fra1"],
+  "functions": {
+    "src/dist/cli.js": {
+      "memory": 256,
+      "maxDuration": 10,
+      "launcherType": "CLI"
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

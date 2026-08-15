@@ -1,0 +1,28 @@
+app = "devforge"
+primary_region = "iad"
+
+[build]
+  builder = "heroku/buildpacks:20"
+
+[build.env]
+  NODE_ENV = "production"
+
+[[services]]
+  internal_port = 8080
+  protocol = "http"
+
+  [[services.ports]]
+    port = 8080
+
+  [[services.routes]]
+    path = "/"
+    preserve_path_prefix = true
+
+  [services.concurrency]
+    hard_limit = 50
+    soft_limit = 30
+
+  [[services.tcp_checks]]
+    interval = 10000
+    timeout = 2000
+    restart_limit = 3

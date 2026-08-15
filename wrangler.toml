@@ -1,0 +1,14 @@
+name = "devforge"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+account_id = ""
+
+# Workers for edge CLI
+[[tail_workers]]
+binding = "LOGS"
+
+[env]
+  NODE_ENV = "production"
+
+# Secrets
+# wrangler secret put NPM_TOKEN

@@ -1,0 +1,75 @@
+name: my-microservice-platform
+namespace: production
+services:
+  - name: api-gateway
+    language: node
+    port: 3000
+    dependencies:
+      - auth-service
+    env:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      RATE_LIMIT: "100"
+    healthCheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    scaling:
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilization: 70
+      targetMemoryUtilization: 80
+
+  - name: auth-service
+    language: node
+    port: 3001
+    dependencies: []
+    env:
+      NODE_ENV: production
+      JWT_SECRET: changeme
+      JWT_EXPIRY: 24h
+      DB_PORT: "5432"
+    healthCheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    scaling:
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilization: 70
+
+databases:
+  - name: postgres
+    type: postgres
+    version: "15"
+    size: 10Gi
+    port: 5432
+
+  - name: redis
+    type: redis
+    version: "7"
+    port: 6379
+
+ingress:
+  enabled: true
+  rules:
+    - host: api.example.com
+      path: /
+      service: api-gateway
+      servicePort: 3000
+    - host: auth.example.com
+      path: /
+      service: auth-service
+      servicePort: 3001
+  tls:
+    - hosts:
+        - api.example.com
+        - auth.example.com
+      secretName: platform-tls
+
+github:
+  owner: M-Destiny
+  repo: devforge
+  branch: main
