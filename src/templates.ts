@@ -689,31 +689,6 @@ restart-<%name%>: ## Restart <%name%>
 
 <%/services%>`;
 
-export const templates = {
-  'docker-compose': dockerComposeTemplate,
-  'k8s-deployment': k8sDeploymentTemplate,
-  'k8s-service': k8sServiceTemplate,
-  'k8s-hpa': k8sHPATemplate,
-  'k8s-ingress': k8sIngressTemplate,
-  'k8s-configmap': k8sConfigMapTemplate,
-  'dockerfile-node': dockerfileNode,
-  'dockerfile-python': dockerfilePython,
-  'github-actions': githubActionsTemplate,
-  'prometheus-cm': prometheusConfigMapTemplate,
-  'service-readme': serviceReadmeTemplate,
-  'nginx-conf': nginxConfTemplate,
-  'Makefile': makefileTemplate,
-  'k8s-pdb': k8sPDBTemplate,
-  'k8s-networkpolicy': k8sNetworkPolicyTemplate,
-  'k8s-networkpolicy-strict': k8sNetworkPolicyStrictTemplate,
-  'k8s-netpol-default-deny': k8sNetPolDefaultDenyTemplate,
-  'helm-chart': helmChartTemplate,
-  'helm-deployment': helmChartDeploymentTemplate,
-  'helm-service': helmChartServiceTemplate,
-  'helm-values': helmValuesTemplate,
-  'helm-notes': helmChartNOTES,
-};
-
 export function listTemplates(): string[] {
   return Object.keys(templates);
 }
@@ -974,3 +949,30 @@ Services:
 - <%name%> on port <%port%>
 <%/services%>
 `;
+
+// Registry of all templates — placed after every const declaration to avoid
+// TDZ (temporal dead zone) forward references to k8s/helm templates below.
+export const templates = {
+  'docker-compose': dockerComposeTemplate,
+  'k8s-deployment': k8sDeploymentTemplate,
+  'k8s-service': k8sServiceTemplate,
+  'k8s-hpa': k8sHPATemplate,
+  'k8s-ingress': k8sIngressTemplate,
+  'k8s-configmap': k8sConfigMapTemplate,
+  'dockerfile-node': dockerfileNode,
+  'dockerfile-python': dockerfilePython,
+  'github-actions': githubActionsTemplate,
+  'prometheus-cm': prometheusConfigMapTemplate,
+  'service-readme': serviceReadmeTemplate,
+  'nginx-conf': nginxConfTemplate,
+  'Makefile': makefileTemplate,
+  'k8s-pdb': k8sPDBTemplate,
+  'k8s-networkpolicy': k8sNetworkPolicyTemplate,
+  'k8s-networkpolicy-strict': k8sNetworkPolicyStrictTemplate,
+  'k8s-netpol-default-deny': k8sNetPolDefaultDenyTemplate,
+  'helm-chart': helmChartTemplate,
+  'helm-deployment': helmChartDeploymentTemplate,
+  'helm-service': helmChartServiceTemplate,
+  'helm-values': helmValuesTemplate,
+  'helm-notes': helmChartNOTES,
+};
