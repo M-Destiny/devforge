@@ -718,12 +718,16 @@ export function getTemplatePlaceholders(templateName: string): string[] {
   if (!template) {
     throw new Error(`Unknown template: ${templateName}`);
   }
-  const matches = template.match(/{{{?\s*[A-Za-z0-9_.]+\s*}}}?/g) || [];
+  // The project uses <% %> delimiters, not the Mustache default {{ }}.
+  // Match variable tags (`<%name%>`, `<%service.name%>`) — these are the only
+  // placeholders that need to resolve against the TemplateContext. Skip section
+  // tags (<%#foo%>, <%/foo%>, <%^foo%>, <%!comment%>, <%{raw}%>, <%.%>) which
+  // are control flow or lambdas, not data lookups.
+  const variableTag = /<%([\^/!{#]|\.[^%]*)?\s*([A-Za-z0-9_.]+)\s*%>/g;
   const names = new Set<string>();
-  for (const raw of matches) {
-    const inner = raw.replace(/[{}\s]/g, '');
-    const head = inner.split('.')[0]?.split('[')[0];
-    if (head) names.add(head);
+  let m: RegExpExecArray | null;
+  while ((m = variableTag.exec(template)) !== null) {
+    names.add(m[2]);
   }
   return Array.from(names).sort();
 }

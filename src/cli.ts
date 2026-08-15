@@ -18,32 +18,61 @@ program
   .description('Initialize a new DevForge project from a spec file')
   .argument('<spec.yaml>', 'Path to the spec YAML file')
   .option('-o, --output <dir>', 'Output directory', './output')
-  .action(async (specFile: string, options: { output: string }) => {
-    try {
-      const content = await readFile(specFile, 'utf-8');
-      const spec = parseSpec(content);
+  .option('--dry-run', 'Preview what would be generated without writing any files', false)
+  .option('--diff', 'Show a unified diff for every file that would be modified', false)
+  .option('--overwrite', 'Overwrite existing files without prompting', false)
+  .action(
+    async (
+      specFile: string,
+      options: { output: string; dryRun: boolean; diff: boolean; overwrite: boolean }
+    ) => {
+      try {
+        const content = await readFile(specFile, 'utf-8');
+        const spec = parseSpec(content);
 
-      console.log(`Generating project: ${spec.name}`);
-      const generator = new ProjectGenerator(spec, options.output);
-      const result = await generator.generate();
+        console.log(`Generating project: ${spec.name}`);
+        const generator = new ProjectGenerator(spec, options.output, {
+          dryRun: options.dryRun,
+          diff: options.diff,
+          overwrite: options.overwrite,
+        });
+        const result = await generator.generate();
 
-      if (result.success) {
-        console.log(`✅ Generated ${result.filesGenerated.length} files`);
-        result.filesGenerated.forEach(f => console.log(`  - ${f}`));
-        if (result.warnings.length > 0) {
-          console.log('\nWarnings:');
-          result.warnings.forEach(w => console.log(`  ⚠️ ${w}`));
+        if (options.diff) {
+          const diffs = generator.getDiffs();
+          const meaningful = diffs.filter(d => d.diff);
+          if (meaningful.length > 0) {
+            console.log('\nDiffs:');
+            for (const entry of meaningful) {
+              console.log(`\n--- ${entry.path} (${entry.status}) ---`);
+              console.log(entry.diff);
+            }
+          } else {
+            console.log('\nNo diffs (clean output).');
+          }
         }
-      } else {
-        console.error('❌ Generation failed:');
-        result.errors.forEach(e => console.error(`  - ${e}`));
+
+        if (result.success) {
+          console.log(`\n${generator.formatSummary()}`);
+          result.filesGenerated.forEach(f => console.log(`  + ${f}`));
+          if (result.warnings.length > 0) {
+            console.log('\nWarnings:');
+            result.warnings.forEach(w => console.log(`  ⚠️  ${w}`));
+          }
+          if (options.dryRun) {
+            console.log('\n(dry-run: no files were written)');
+          }
+        } else {
+          console.error('\n❌ Generation failed:');
+          result.errors.forEach(e => console.error(`  - ${e}`));
+          process.exit(1);
+        }
+      } catch (err) {
+        console.error('❌ Error:', err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
-    } catch (err) {
-      console.error('❌ Error:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
     }
-  });
+  );
 
 program
   .command('validate')

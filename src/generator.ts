@@ -486,19 +486,19 @@ tests/fixtures/
 
   private async generateK8sHardening(): Promise<void> {
     const context = this.buildContext(this.spec.services[0]);
-    // Cluster-wide NetworkPolicy: default-deny + allow ingress + allow DNS
-    const defaultDeny = renderTemplate('k8s-netpol-default-deny', context);
-    await this.writeRenderedFile(
-      join(this.outputDir, 'k8s', 'networkpolicies', 'default-deny.yaml'),
-      defaultDeny
-    );
 
-    // Per-service NetworkPolicy
+    // Cluster-wide NetworkPolicy: default-deny + allow ingress + allow DNS
+    const netpolDir = join(this.outputDir, 'k8s', 'networkpolicies');
+    await this.ensureDir(netpolDir);
+    const defaultDeny = renderTemplate('k8s-netpol-default-deny', context);
+    await this.writeRenderedFile(join(netpolDir, 'default-deny.yaml'), defaultDeny);
+
+    // Per-service strict NetworkPolicy
+    const svcNetpolDir = join(this.outputDir, 'k8s', 'service-networkpolicies');
+    await this.ensureDir(svcNetpolDir);
     for (const service of this.spec.services) {
-      const dir = join(this.outputDir, 'k8s', 'service-networkpolicies');
-      await this.ensureDir(dir);
       const content = renderTemplate('k8s-networkpolicy-strict', this.buildContext(service));
-      await this.writeRenderedFile(join(dir, `${service.name}.yaml`), content);
+      await this.writeRenderedFile(join(svcNetpolDir, `${service.name}.yaml`), content);
     }
   }
 }
