@@ -20,8 +20,8 @@ const Mustache = nodeRequire('mustache') as {
   Scanner: unknown;
 };
 
-const dockerfileNode = `{{=<% %>=}}# syntax=docker/dockerfile:1
-FROM node:{{{nodeVersion}}} AS builder
+const dockerfileNode = `# syntax=docker/dockerfile:1
+FROM node:<%{nodeVersion}%> AS builder
 WORKDIR /app
 
 COPY package*.json ./
@@ -30,7 +30,7 @@ RUN npm ci --only=production
 COPY src ./src
 RUN npm run build || true
 
-FROM node:{{{nodeVersion}}}-slim AS runtime
+FROM node:<%{nodeVersion}%>-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \\
@@ -41,29 +41,29 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
 
-{{#env}}
-{{#.}}
-ENV {{{key}}}={{{value}}}
-{{/.}}
-{{/env}}
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
 
-EXPOSE {{{port}}}
-{{#healthCheck}}
-{{#path}}
-HEALTHCHECK --interval={{{interval}}} --timeout={{{timeout}}} --retries={{{retries}}} \\
-  CMD curl -f http://localhost:{{{port}}}{{{path}}} || exit 1
-{{/path}}
-{{/healthCheck}}
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
 
-{{#command}}
-CMD [{{#command}}{{{this}}}, {{/command}}]
-{{^command}}
+<%#command%>
+CMD [<%#command%><%{this}%>, <%/command%>]
+<%^command%>
 CMD ["node", "dist/index.js"]
-{{/command}}
+<%/command%>
 `;
 
-const dockerfilePython = `{{=<% %>=}}# syntax=docker/dockerfile:1
-FROM python:{{{pythonVersion}}} AS builder
+const dockerfilePython = `# syntax=docker/dockerfile:1
+FROM python:<%{pythonVersion}%> AS builder
 WORKDIR /app
 
 COPY requirements.txt ./
@@ -71,7 +71,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-FROM python:{{{pythonVersion}}}-slim AS runtime
+FROM python:<%{pythonVersion}%>-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \\
@@ -79,163 +79,163 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/.cache/pip /root/.cache/pip
-COPY --from=builder /usr/local/lib/python{{#pythonMajor}}}^{{{.}}}{{/pythonMajor}} /usr/local/lib/python{{#pythonMajor}}}^{{{.}}}{{/pythonMajor}}
+COPY --from=builder /usr/local/lib/python<%#pythonMajor%>}^<%{.}%><%/pythonMajor%> /usr/local/lib/python<%#pythonMajor%>}^<%{.}%><%/pythonMajor%>
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-{{#env}}
-{{#.}}
-ENV {{{key}}}={{{value}}}
-{{/.}}
-{{/env}}
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
 
-EXPOSE {{{port}}}
-{{#healthCheck}}
-{{#path}}
-HEALTHCHECK --interval={{{interval}}} --timeout={{{timeout}}} --retries={{{retries}}} \\
-  CMD curl -f http://localhost:{{{port}}}{{{path}}} || exit 1
-{{/path}}
-{{/healthCheck}}
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
 
-{{#command}}
-CMD [{{#command}}{{{this}}}, {{/command}}]
-{{^command}}
+<%#command%>
+CMD [<%#command%><%{this}%>, <%/command%>]
+<%^command%>
 CMD ["python", "-m", "src"]
-{{/command}}
+<%/command%>
 `;
 
-const dockerComposeTemplate = `{{=<% %>=}}version: '3.9'
+const dockerComposeTemplate = `version: '3.9'
 
 services:
-{{#services}}
-  {{name}}:
+<%#services%>
+  <%name%>:
     build:
-      context: ./services/{{name}}
+      context: ./services/<%name%>
       dockerfile: Dockerfile
-    container_name: {{name}}
+    container_name: <%name%>
     ports:
-      - "{{port}}:{{port}}"
+      - "<%port%>:<%port%>"
     environment:
       - NODE_ENV=development
-      - PORT={{port}}
-{{#dependencies}}
-      - SERVICE_DEPENDENCIES={{#.}}
-{{{this}}}
-{{/.}}
-{{/dependencies}}
-{{#env}}
-{{#.}}
-      - {{{key}}}={{{value}}}
-{{/.}}
-{{/env}}
-{{#healthCheck}}
-{{#path}}
+      - PORT=<%port%>
+<%#dependencies%>
+      - SERVICE_DEPENDENCIES=<%#.%>
+<%{this}%>
+<%/.%>
+<%/dependencies%>
+<%#env%>
+<%#.%>
+      - <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+<%#healthCheck%>
+<%#path%>
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:{{port}}{{path}}"]
-      interval: "{{interval}}"
-      timeout: "{{timeout}}"
-      retries: {{retries}}
-{{/path}}
-{{/healthCheck}}
+      test: ["CMD", "curl", "-f", "http://localhost:<%port%><%path%>"]
+      interval: "<%interval%>"
+      timeout: "<%timeout%>"
+      retries: <%retries%>
+<%/path%>
+<%/healthCheck%>
     depends_on:
-{{#dependencies}}
-      - {{{this}}}
-{{/dependencies}}
+<%#dependencies%>
+      - <%{this}%>
+<%/dependencies%>
     networks:
       - devforge-network
     restart: unless-stopped
 
-{{/services}}
-{{#databases}}
-  {{name}}:
-    image: {{{type}}}:{{{version}}}
-    container_name: {{name}}
+<%/services%>
+<%#databases%>
+  <%name%>:
+    image: <%{type}%>:<%{version}%>
+    container_name: <%name%>
     environment:
-{{#.}}
-    {{/.}}
-{{#size}}
-      - POSTGRES_SIZE={{size}}
-{{/size}}
+<%#.%>
+    <%/.%>
+<%#size%>
+      - POSTGRES_SIZE=<%size%>
+<%/size%>
     ports:
-      - "{{port}}:{{port}}"
+      - "<%port%>:<%port%>"
     volumes:
-      - {{name}}-data:/var/lib/{{type}}
+      - <%name%>-data:/var/lib/<%type%>
     networks:
       - devforge-network
     restart: unless-stopped
 
-{{/databases}}
+<%/databases%>
 volumes:
-{{#databases}}
-  {{name}}-data:
-{{/databases}}
+<%#databases%>
+  <%name%>-data:
+<%/databases%>
 
 networks:
   devforge-network:
     driver: bridge
 `;
 
-const k8sDeploymentTemplate = `{{=<% %>=}}apiVersion: apps/v1
+const k8sDeploymentTemplate = `apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{service.name}}
-  namespace: {{project.namespace}}
+  name: <%service.name%>
+  namespace: <%project.namespace%>
   labels:
-    app: {{service.name}}
-    app.kubernetes.io/name: {{service.name}}
+    app: <%service.name%>
+    app.kubernetes.io/name: <%service.name%>
     app.kubernetes.io/managed-by: devforge
 spec:
-  replicas: {{service.scaling.minReplicas}}{{^service.scaling}}1{{/service.scaling}}
+  replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>
   selector:
     matchLabels:
-      app: {{service.name}}
+      app: <%service.name%>
   template:
     metadata:
       labels:
-        app: {{service.name}}
-        app.kubernetes.io/name: {{service.name}}
+        app: <%service.name%>
+        app.kubernetes.io/name: <%service.name%>
     spec:
       containers:
-        - name: {{service.name}}
-          image: {{service.image}}{{^service.image}}docker.io/{{project.github.owner}}/{{project.name}}-{{service.name}}:latest{{/service.image}}
+        - name: <%service.name%>
+          image: <%service.image%><%^service.image%>docker.io/<%project.github.owner%>/<%project.name%>-<%service.name%>:latest<%/service.image%>
           imagePullPolicy: Always
           ports:
             - name: http
-              containerPort: {{service.port}}
+              containerPort: <%service.port%>
               protocol: TCP
           env:
-{{#service.env}}
-{{#.}}
-            - name: {{{key}}}
-              value: "{{value}}"
-{{/.}}
-{{/service.env}}
-{{#service.dependencies}}
+<%#service.env%>
+<%#.%>
+            - name: <%{key}%>
+              value: "<%value%>"
+<%/.%>
+<%/service.env%>
+<%#service.dependencies%>
             - name: SERVICE_DEPENDENCIES
-              value: "{{#.}}
-{{{this}}}
-{{/.}}
-{{/service.dependencies}}
+              value: "<%#.%>
+<%{this}%>
+<%/.%>
+<%/service.dependencies%>
           livenessProbe:
-{{#service.healthCheck}}
-{{#path}}
+<%#service.healthCheck%>
+<%#path%>
             httpGet:
-              path: {{{path}}}
+              path: <%{path}%>
               port: http
-{{/path}}
-{{^path}}
+<%/path%>
+<%^path%>
             tcpSocket:
               port: http
-{{/path}}
+<%/path%>
             initialDelaySeconds: 30
             periodSeconds: 10
-{{/service.healthCheck}}
-{{^service.healthCheck}}
+<%/service.healthCheck%>
+<%^service.healthCheck%>
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 10
-{{/service.healthCheck}}
+<%/service.healthCheck%>
           readinessProbe:
             httpGet:
               path: /ready
@@ -251,71 +251,71 @@ spec:
               cpu: "500m"
 `;
 
-const k8sServiceTemplate = `{{=<% %>=}}apiVersion: v1
+const k8sServiceTemplate = `apiVersion: v1
 kind: Service
 metadata:
-  name: {{service.name}}
-  namespace: {{project.namespace}}
+  name: <%service.name%>
+  namespace: <%project.namespace%>
   labels:
-    app: {{service.name}}
+    app: <%service.name%>
 spec:
   type: ClusterIP
   ports:
-    - port: {{service.port}}
+    - port: <%service.port%>
       targetPort: http
       protocol: TCP
       name: http
   selector:
-    app: {{service.name}}
+    app: <%service.name%>
 `;
 
-const k8sHPATemplate = `{{=<% %>=}}apiVersion: autoscaling/v2
+const k8sHPATemplate = `apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{service.name}}
-  namespace: {{project.namespace}}
+  name: <%service.name%>
+  namespace: <%project.namespace%>
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{service.name}}
-{{#service.scaling}}
-  minReplicas: {{minReplicas}}
-  maxReplicas: {{maxReplicas}}
-{{/service.scaling}}
-{{^service.scaling}}
+    name: <%service.name%>
+<%#service.scaling%>
+  minReplicas: <%minReplicas%>
+  maxReplicas: <%maxReplicas%>
+<%/service.scaling%>
+<%^service.scaling%>
   minReplicas: 1
   maxReplicas: 5
-{{/service.scaling}}
+<%/service.scaling%>
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-{{#service.scaling}}
-          averageUtilization: {{targetCPUUtilization}}{{^targetCPUUtilization}}70{{/targetCPUUtilization}}
-{{/service.scaling}}
-{{^service.scaling}}
+<%#service.scaling%>
+          averageUtilization: <%targetCPUUtilization%><%^targetCPUUtilization%>70<%/targetCPUUtilization%>
+<%/service.scaling%>
+<%^service.scaling%>
           averageUtilization: 70
-{{/service.scaling}}
-{{#service.scaling}}
-{{#targetMemoryUtilization}}
+<%/service.scaling%>
+<%#service.scaling%>
+<%#targetMemoryUtilization%>
     - type: Resource
       resource:
         name: memory
         target:
           type: Utilization
-          averageUtilization: {{targetMemoryUtilization}}
-{{/targetMemoryUtilization}}
-{{/service.scaling}}
+          averageUtilization: <%targetMemoryUtilization%>
+<%/targetMemoryUtilization%>
+<%/service.scaling%>
 `;
 
-const k8sIngressTemplate = `{{=<% %>=}}apiVersion: networking.k8s.io/v1
+const k8sIngressTemplate = `apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{project.name}}
-  namespace: {{project.namespace}}
+  name: <%project.name%>
+  namespace: <%project.namespace%>
   annotations:
     kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -323,72 +323,72 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 spec:
   tls:
-{{#ingress.tls}}
+<%#ingress.tls%>
     - hosts:
-{{#hosts}}
-        - {{{this}}}
-{{/hosts}}
-      secretName: {{secretName}}
-{{/ingress.tls}}
-{{^ingress.tls}}
+<%#hosts%>
+        - <%{this}%>
+<%/hosts%>
+      secretName: <%secretName%>
+<%/ingress.tls%>
+<%^ingress.tls%>
     - hosts:
-        - "*.{{project.namespace}}.svc.cluster.local"
-      secretName: {{project.name}}-tls
-{{/ingress.tls}}
+        - "*.<%project.namespace%>.svc.cluster.local"
+      secretName: <%project.name%>-tls
+<%/ingress.tls%>
   rules:
-{{#ingress.rules}}
-    - host: {{{host}}}
+<%#ingress.rules%>
+    - host: <%{host}%>
       http:
         paths:
-          - path: {{{path}}}
+          - path: <%{path}%>
             pathType: Prefix
             backend:
               service:
-                name: {{service}}
+                name: <%service%>
                 port:
-                  number: {{servicePort}}
-{{/ingress.rules}}
-{{^ingress.rules}}
-    - host: api.{{project.namespace}}.example.com
+                  number: <%servicePort%>
+<%/ingress.rules%>
+<%^ingress.rules%>
+    - host: api.<%project.namespace%>.example.com
       http:
         paths:
-{{#services}}
-          - path: /{{name}}
+<%#services%>
+          - path: /<%name%>
             pathType: Prefix
             backend:
               service:
-                name: {{name}}
+                name: <%name%>
                 port:
-                  number: {{port}}
-{{/services}}
-{{/ingress.rules}}
+                  number: <%port%>
+<%/services%>
+<%/ingress.rules%>
 `;
 
-const k8sConfigMapTemplate = `{{=<% %>=}}apiVersion: v1
+const k8sConfigMapTemplate = `apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{service.name}}-env
-  namespace: {{project.namespace}}
+  name: <%service.name%>-env
+  namespace: <%project.namespace%>
   labels:
-    app: {{service.name}}
+    app: <%service.name%>
 data:
-{{#service.env}}
-{{#.}}
-  {{{key}}}: "{{value}}"
-{{/.}}
-{{/service.env}}
-{{^service.env}}
+<%#service.env%>
+<%#.%>
+  <%{key}%>: "<%value%>"
+<%/.%>
+<%/service.env%>
+<%^service.env%>
   NODE_ENV: "production"
-{{/service.env}}
-  PORT: "{{service.port}}"
-{{#service.dependencies}}
-  SERVICE_DEPENDENCIES: "{{#.}}
-{{{this}}}
-{{/.}}
-{{/service.dependencies}}
+<%/service.env%>
+  PORT: "<%service.port%>"
+<%#service.dependencies%>
+  SERVICE_DEPENDENCIES: "<%#.%>
+<%{this}%>
+<%/.%>
+<%/service.dependencies%>
 `;
 
-const githubActionsTemplate = `{{=<% %>=}}name: Build and Deploy
+const githubActionsTemplate = `name: Build and Deploy
 
 on:
   push:
@@ -408,9 +408,9 @@ jobs:
     strategy:
       matrix:
         service:
-{{#services}}
-          - {{{name}}}
-{{/services}}
+<%#services%>
+          - <%{name}%>
+<%/services%>
 
     steps:
       - name: Checkout
@@ -466,18 +466,18 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-{{#services}}
-          kubectl apply -f k8s/{{{"{{"}}}/services/{{{name}}}/deployment.yaml
-          kubectl apply -f k8s/{{{"{{"}}}/services/{{{name}}}/service.yaml
-{{/services}}
-{{#databases}}
-          kubectl apply -f k8s/{{{"{{"}}}/databases/{{{name}}}.yaml
-{{/databases}}
+<%#services%>
+          kubectl apply -f k8s/{{{"{{"}}}/services/<%{name}%>/deployment.yaml
+          kubectl apply -f k8s/{{{"{{"}}}/services/<%{name}%>/service.yaml
+<%/services%>
+<%#databases%>
+          kubectl apply -f k8s/{{{"{{"}}}/databases/<%{name}%>.yaml
+<%/databases%>
           kubectl apply -f k8s/ingress.yaml
-          kubectl rollout status deployment -n {{project.namespace}}
+          kubectl rollout status deployment -n <%project.namespace%>
 `;
 
-const prometheusConfigMapTemplate = `{{=<% %>=}}apiVersion: v1
+const prometheusConfigMapTemplate = `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
@@ -489,16 +489,16 @@ data:
       evaluation_interval: 15s
 
     scrape_configs:
-      - job_name: '{{project.name}}'
+      - job_name: '<%project.name%>'
         kubernetes_sd_configs:
           - role: pod
         relabel_configs:
           - source_labels:
               - __meta_kubernetes_pod_label_app
             action: keep
-            regex: {{services.0.name}}{{^services.0.name}}.*{{/services.0.name}}
-{{#services}}
-      - job_name: '{{name}}'
+            regex: <%services.0.name%><%^services.0.name%>.*<%/services.0.name%>
+<%#services%>
+      - job_name: '<%name%>'
         kubernetes_sd_configs:
           - role: pod
             namespaces:
@@ -508,45 +508,45 @@ data:
           - source_labels:
               - __meta_kubernetes_pod_label_app
             action: keep
-            regex: {{name}}
+            regex: <%name%>
           - source_labels:
               - __meta_kubernetes_pod_container_port_number
             action: keep
-            regex: "{{port}}"
-{{/services}}
-{{#databases}}
-      - job_name: '{{name}}'
+            regex: "<%port%>"
+<%/services%>
+<%#databases%>
+      - job_name: '<%name%>'
         static_configs:
           - targets:
-              - {{name}}.{{../project.namespace}}.svc.cluster.local:{{port}}
-{{/databases}}
+              - <%name%>.{{../project.namespace}}.svc.cluster.local:<%port%>
+<%/databases%>
 `;
 
-const serviceReadmeTemplate = `{{=<% %>=}}# {{service.name}}
+const serviceReadmeTemplate = `# <%service.name%>
 
 ## Overview
 
-Service: **{{service.name}}**
-Language: **{{service.language}}**
-Port: **{{service.port}}**
+Service: **<%service.name%>**
+Language: **<%service.language%>**
+Port: **<%service.port%>**
 
-{{#service.dependencies}}
+<%#service.dependencies%>
 ## Dependencies
 
-{{#.}}
-- {{{this}}}
-{{/.}}
-{{/service.dependencies}}
+<%#.%>
+- <%{this}%>
+<%/.%>
+<%/service.dependencies%>
 
-{{#service.env}}
+<%#service.env%>
 ## Environment Variables
 
 | Variable | Value |
 |----------|-------|
-{{#.}}
-| {{{key}}} | {{{value}}} |
-{{/.}}
-{{/service.env}}
+<%#.%>
+| <%{key}%> | <%{value}%> |
+<%/.%>
+<%/service.env%>
 
 ## API Endpoints
 
@@ -558,23 +558,23 @@ GET /health
 
 Returns service health status.
 
-{{#service.healthCheck}}
-{{#path}}
-### Custom Health Path: {{{path}}}
-{{/path}}
-{{/service.healthCheck}}
+<%#service.healthCheck%>
+<%#path%>
+### Custom Health Path: <%{path}%>
+<%/path%>
+<%/service.healthCheck%>
 
 ## Local Development
 
 \`\`\`bash
 # Start service
-docker-compose up {{service.name}}
+docker-compose up <%service.name%>
 
 # View logs
-docker-compose logs -f {{service.name}}
+docker-compose logs -f <%service.name%>
 
 # Run tests
-cd services/{{service.name}}
+cd services/<%service.name%>
 npm test
 \`\`\`
 
@@ -582,30 +582,30 @@ npm test
 
 This service is deployed to Kubernetes with the following configuration:
 
-- **Namespace**: {{project.namespace}}
-{{#service.scaling}}
-- **Replicas**: {{service.scaling.minReplicas}} - {{service.scaling.maxReplicas}}
-{{/service.scaling}}
-{{^service.scaling}}
+- **Namespace**: <%project.namespace%>
+<%#service.scaling%>
+- **Replicas**: <%service.scaling.minReplicas%> - <%service.scaling.maxReplicas%>
+<%/service.scaling%>
+<%^service.scaling%>
 - **Replicas**: 1 - 5
-{{/service.scaling}}
-- **Health Check**: {{service.healthCheck.path}}{{^service.healthCheck.path}}/health{{/service.healthCheck.path}}
+<%/service.scaling%>
+- **Health Check**: <%service.healthCheck.path%><%^service.healthCheck.path%>/health<%/service.healthCheck.path%>
 
 ## Docker
 
 \`\`\`bash
 # Build
-docker build -t {{service.name}} ./services/{{service.name}}
+docker build -t <%service.name%> ./services/<%service.name%>
 
 # Run
-docker run -p {{service.port}}:{{service.port}} {{service.name}}
+docker run -p <%service.port%>:<%service.port%> <%service.name%>
 \`\`\`
 `;
 
-const nginxConfTemplate = `{{=<% %>=}}upstream {{project.name}} {
-{{#services}}
-    server {{name}}:{{port}};
-{{/services}}
+const nginxConfTemplate = `upstream <%project.name%> {
+<%#services%>
+    server <%name%>:<%port%>;
+<%/services%>
 }
 
 server {
@@ -615,7 +615,7 @@ server {
     client_max_body_size 10M;
 
     location / {
-        proxy_pass http://{{project.name}};
+        proxy_pass http://<%project.name%>;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -633,10 +633,10 @@ server {
 }
 `;
 
-const makefileTemplate = `{{=<% %>=}}.PHONY: up down logs ps build clean test lint help
+const makefileTemplate = `.PHONY: up down logs ps build clean test lint help
 
 COMPOSE_FILE := docker-compose.yml
-PROJECT_NAME := {{project.name}}
+PROJECT_NAME := <%project.name%>
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\\033[36m%-15s\\033[0m %s\\n", $$1, $$2}'
@@ -667,25 +667,25 @@ clean: ## Remove all containers, volumes, and images
 	rm -rf services/*/dist
 
 test: ## Run tests for all services
-{{#services}}
-	@echo "Testing {{name}}..."
-	-cd services/{{name}} && npm test
-{{/services}}
+<%#services%>
+	@echo "Testing <%name%>..."
+	-cd services/<%name%> && npm test
+<%/services%>
 
 lint: ## Run linters
-{{#services}}
-	@echo "Linting {{name}}..."
-	-cd services/{{name}} && npm run lint
-{{/services}}
+<%#services%>
+	@echo "Linting <%name%>..."
+	-cd services/<%name%> && npm run lint
+<%/services%>
 
-{{#services}}
-logs-{{name}}: ## View logs for {{name}}
-	docker-compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f {{name}}
+<%#services%>
+logs-<%name%>: ## View logs for <%name%>
+	docker-compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) logs -f <%name%>
 
-restart-{{name}}: ## Restart {{name}}
-	docker-compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) restart {{name}}
+restart-<%name%>: ## Restart <%name%>
+	docker-compose -f $(COMPOSE_FILE) -p $(PROJECT_NAME) restart <%name%>
 
-{{/services}}`;
+<%/services%>`;
 
 export const templates = {
   'docker-compose': dockerComposeTemplate,
