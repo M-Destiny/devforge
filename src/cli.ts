@@ -86,7 +86,8 @@ program
   .description('Interactively scaffold a new project')
   .argument('<name>', 'Project name')
   .action(async (name: string) => {
-    const { default: prompts } = await import('prompts');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prompts = (await import('prompts')) as any;
     const questions: Array<{
       type: 'text' | 'list';
       name: string;
