@@ -703,9 +703,24 @@ export function renderTemplate(templateName: string, context: TemplateContext): 
   //   <%{ %> %> for raw output (no HTML escaping)
   // This is the supported, idiomatic way to override delimiters without
   // adding a `{{=<% %>=}}` header to every template.
-  return Mustache.render(template, context, {}, {
-    tags: ['<%', '%>'],
-  } as unknown);
+  //
+  // Security note: Mustache 4 calls HTML-escape on every <%var%> output by
+  // default. DevForge generates non-HTML artifacts (k8s YAML, Dockerfile,
+  // Makefile, GitHub Actions), so HTML escaping silently corrupts identifiers
+  // that contain `<`, `>`, `&`, `"`, or `'` — e.g. a service named `api<v1>`
+  // would render as `api&lt;v1&gt;` and break `kubectl apply`. We override the
+  // escape function with an identity function so identifiers pass through
+  // unchanged. Authors of new templates who need HTML escaping should use
+  // `<%{var}%>` (raw) intentionally, not rely on the default.
+  return Mustache.render(
+    template,
+    context,
+    {},
+    {
+      tags: ['<%', '%>'],
+      escape: (value: unknown) => (value == null ? '' : String(value)),
+    } as unknown
+  );
 }
 
 /**
