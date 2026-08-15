@@ -56,7 +56,8 @@ HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retri
 <%/healthCheck%>
 
 <%#command%>
-CMD [<%#command%><%{this}%>, <%/command%>]
+CMD [<%#.%><%{this}%>, <%/.%>]
+<%/command%>
 <%^command%>
 CMD ["node", "dist/index.js"]
 <%/command%>
@@ -97,7 +98,8 @@ HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retri
 <%/healthCheck%>
 
 <%#command%>
-CMD [<%#command%><%{this}%>, <%/command%>]
+CMD [<%#.%><%{this}%>, <%/.%>]
+<%/command%>
 <%^command%>
 CMD ["python", "-m", "src"]
 <%/command%>
