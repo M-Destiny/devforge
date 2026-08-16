@@ -273,6 +273,56 @@ describe('validateSpec', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.some(e => e.includes('Namespace') && e.includes('DNS-1123'))).toBe(true);
   });
+
+  it('rejects duplicate service names (would collide on k8s label selectors)', () => {
+    const spec = {
+      name: 'test-project',
+      namespace: 'default',
+      services: [
+        { name: 'api', language: 'node' as const, port: 3000 },
+        { name: 'api', language: 'python' as const, port: 3001 },
+      ],
+    };
+    const result = validateSpec(spec);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('Duplicate service name'))).toBe(true);
+  });
+
+  it('rejects duplicate database names', () => {
+    const spec = {
+      name: 'test-project',
+      namespace: 'default',
+      services: [{ name: 'api', language: 'node' as const, port: 3000 }],
+      databases: [
+        { name: 'postgres', type: 'postgres' as const, version: '15' },
+        { name: 'postgres', type: 'postgres' as const, version: '16' },
+      ],
+    };
+    const result = validateSpec(spec);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('Duplicate database name'))).toBe(true);
+  });
+
+  it('rejects when a service and database share a name (label-selector collision)', () => {
+    // Both the service Deployment and the database Deployment emit
+    // `app: redis` as their pod label. NetworkPolicy ingress selectors,
+    // Prometheus relabel_configs, and HPA scaleTargetRefs all key off
+    // `app:` — so a `redis` service and a `redis` database would route to
+    // each other's pods.
+    const spec = {
+      name: 'test-project',
+      namespace: 'default',
+      services: [{ name: 'redis', language: 'node' as const, port: 6379 }],
+      databases: [{ name: 'redis', type: 'redis' as const, version: '7' }],
+    };
+    const result = validateSpec(spec);
+    expect(result.valid).toBe(false);
+    expect(
+      result.errors.some(
+        e => e.includes('redis') && e.includes('service and a database')
+      )
+    ).toBe(true);
+  });
 });
 
 describe('validateKubernetesName', () => {
