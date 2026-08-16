@@ -1922,6 +1922,464 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("<%service.name%>")
 `;
 
+// gRPC service templates
+
+const grpcProtoTemplate = `syntax = "proto3";
+
+package <%service.name%>;
+
+option go_package = "github.com/<%project.github.owner%>/<%project.name%>/gen/go/<%service.name%>";
+option java_package = "com.<%project.github.owner%>.<%project.name%>.<%service.name%>";
+option java_multiple_files = true;
+
+service <%service.name%> {
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetItem (GetItemRequest) returns (GetItemResponse);
+  rpc ListItems (ListItemsRequest) returns (ListItemsResponse);
+}
+
+message HealthCheckRequest {
+  string service = 1;
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string status = 2;
+}
+
+message GetItemRequest {
+  string id = 1;
+}
+
+message GetItemResponse {
+  Item item = 1;
+}
+
+message ListItemsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListItemsResponse {
+  repeated Item items = 1;
+  string next_page_token = 2;
+}
+
+message Item {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+}
+`;
+
+const grpcNodeServiceTemplate = `# <%- service.name %> gRPC Service
+
+import { loadSync } from '@grpc/proto-loader';
+import { GrpcObject, loadPackageDefinition, Server, ServerCredentials, handleUnaryCall, sendUnaryData } from '@grpc/grpc-js';
+import { join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = join(fileURLToPath(import.meta.url), '..');
+
+const PROTO_PATH = join(__dirname, 'proto', '<%service.name%>.proto');
+
+const packageDefinition = loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
+const proto = loadPackageDefinition(packageDefinition) as unknown as GrpcObject;
+const serviceProto = proto.<%service.name%> as GrpcObject;
+
+interface Item {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const items: Map<string, Item> = new Map();
+
+function healthCheck(call: handleUnaryCall<any, any>, callback: sendUnaryData<any>): void {
+  callback(null, { healthy: true, status: 'serving' });
+}
+
+function getItem(call: handleUnaryCall<any, any>, callback: sendUnaryData<any>): void {
+  const { id } = call.request;
+  const item = items.get(id);
+  if (!item) {
+    callback({ code: 5, message: 'Item not found' } as any, null);
+    return;
+  }
+  callback(null, { item });
+}
+
+function listItems(call: handleUnaryCall<any, any>, callback: sendUnaryData<any>): void {
+  const { page_size = 10, page_token } = call.request;
+  const allItems = Array.from(items.values());
+  const start = page_token ? parseInt(page_token, 10) : 0;
+  const end = Math.min(start + page_size, allItems.length);
+  const pageItems = allItems.slice(start, end);
+  const nextPageToken = end < allItems.length ? String(end) : '';
+  callback(null, { items: pageItems, next_page_token: nextPageToken });
+}
+
+function main(): void {
+  const server = new Server();
+  server.addService(serviceProto.<%service.name%>.service, {
+    healthCheck,
+    getItem,
+    listItems,
+  });
+
+  const port = process.env.PORT || '<%service.port%>';
+  server.bindAsync(\`0.0.0.0:\${port}\`, ServerCredentials.createInsecure(), (err, boundPort) => {
+    if (err) {
+      console.error('Failed to bind gRPC server:', err);
+      process.exit(1);
+    }
+    console.log(\`gRPC server running on port \${boundPort}\`);
+  });
+}
+
+main();
+`;
+
+const grpcGoServiceTemplate = `package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
+
+	pb "github.com/<%project.github.owner%>/<%project.name%>/gen/go/<%service.name%>"
+)
+
+type server struct {
+	pb.Unimplemented<%service.name%>Server
+	mu    sync.RWMutex
+	items map[string]*pb.Item
+}
+
+func (s *server) HealthCheck(ctx context.Context, req *pb.HealthCheckRequest) (*pb.HealthCheckResponse, error) {
+	return &pb.HealthCheckResponse{Healthy: true, Status: "serving"}, nil
+}
+
+func (s *server) GetItem(ctx context.Context, req *pb.GetItemRequest) (*pb.GetItemResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, ok := s.items[req.Id]
+	if !ok {
+		return nil, fmt.Errorf("item not found: %s", req.Id)
+	}
+	return &pb.GetItemResponse{Item: item}, nil
+}
+
+func (s *server) ListItems(ctx context.Context, req *pb.ListItemsRequest) (*pb.ListItemsResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	pageSize := int(req.PageSize)
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	start := 0
+	if req.PageToken != "" {
+		var err error
+		start, err = strconv.Atoi(req.PageToken)
+		if err != nil {
+			return nil, fmt.Errorf("invalid page token: %v", err)
+		}
+	}
+
+	var allItems []*pb.Item
+	for _, item := range s.items {
+		allItems = append(allItems, item)
+	}
+
+	end := start + pageSize
+	if end > len(allItems) {
+		end = len(allItems)
+	}
+
+	var nextPageToken string
+	if end < len(allItems) {
+		nextPageToken = strconv.Itoa(end)
+	}
+
+	return &pb.ListItemsResponse{
+		Items:          allItems[start:end],
+		NextPageToken:  nextPageToken,
+	}, nil
+}
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "<%service.port%>"
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	pb.Register<%service.name%>Server(s, &server{
+		items: make(map[string]*pb.Item),
+	})
+
+	// Register health check
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(s, healthServer)
+	healthServer.SetServingStatus("<%service.name%>", healthpb.HealthCheckResponse_SERVING)
+
+	// Enable reflection for grpcurl
+	reflection.Register(s)
+
+	log.Printf("gRPC server listening on port %s", port)
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+`;
+
+const grpcDockerfileNodeTemplate = `# syntax=docker/dockerfile:1
+FROM node:<%{nodeVersion}%> AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY src ./src
+COPY proto ./proto
+RUN npm run build || true
+
+FROM node:<%{nodeVersion}%>-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/proto ./proto
+COPY package*.json ./
+
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\\\
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
+
+<%#command%>
+CMD [<%#.%><%{this}%>, <%/.%>]
+<%/command%>
+<%^command%>
+CMD ["node", "dist/index.js"]
+<%/command%>
+`;
+
+const grpcDockerfileGoTemplate = `# syntax=docker/dockerfile:1
+FROM golang:<%{goVersion}%>-alpine AS builder
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git make protobuf
+
+# Download dependencies first (caching)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Generate gRPC code
+COPY proto ./proto
+RUN mkdir -p gen/go && \\
+    protoc --go_out=gen/go --go-grpc_out=gen/go proto/*.proto
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/server ./cmd/server
+
+FROM alpine:<%{alpineVersion}%> AS runtime
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates curl tzdata \\
+    && update-ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1000 -S appgroup && \\
+    adduser -u 1000 -S appuser -G appgroup
+
+# Copy binary from builder
+COPY --from=builder /app/bin/server /app/bin/server
+
+# Copy generated protobuf files
+COPY --from=builder /app/gen ./gen
+
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\\\\\\\\\
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
+
+USER appuser
+CMD ["/app/bin/server"]
+`;
+
+const grpcNodePackageJson = `{
+  "name": "<%service.name%>",
+  "version": "0.1.0",
+  "description": "<%service.name%> gRPC microservice",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "proto:generate": "grpc_tools_node_protoc --js_out=import_style=commonjs,binary:src --grpc_out=grpc_js:src --proto_path=proto proto/*.proto"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.9.0",
+    "@grpc/proto-loader": "^0.7.10",
+    "grpc-tools": "^1.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "vitest": "^1.0.0"
+  }
+}
+`;
+
+const grpcGoModTemplate = `module github.com/<%project.github.owner%>/<%project.name%>/services/<%service.name%>
+
+go 1.22
+
+require (
+	github.com/golang/protobuf v1.5.3
+	google.golang.org/grpc v1.62.0
+	google.golang.org/protobuf v1.32.0
+)
+
+require (
+	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
+	golang.org/x/net v0.17.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231016162920-1e3b3b6c5c5d // indirect
+	google.golang.org/grpc v1.62.0 // indirect
+)
+`;
+
+const grpcReadmeTemplate = `# <%service.name%>
+
+## Overview
+
+Service: **<%service.name%>**
+Protocol: **gRPC**
+Port: **<%service.port%>**
+
+<%#service.dependencies%>
+## Dependencies
+
+<%#.%>
+- <%{this}%>
+<%/.%>
+<%/service.dependencies%>
+
+## gRPC Service Definition
+
+The service is defined in \`proto/<%service.name%>.proto\`:
+
+\`\`\`protobuf
+service <%service.name%> {
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetItem (GetItemRequest) returns (GetItemResponse);
+  rpc ListItems (ListItemsRequest) returns (ListItemsResponse);
+}
+\`\`\`
+
+## Local Development
+
+\`\`\`bash
+# Start service (Node.js)
+docker-compose up <%service.name%>
+
+# Start service (Go)
+docker-compose up <%service.name%>-go
+
+# Test with grpcurl
+grpcurl -plaintext -d '{"service": "<%service.name%>"}' localhost:<%service.port%> <%service.name%>.<%service.name%>/HealthCheck
+
+# Generate gRPC clients (Node.js)
+cd services/<%service.name%>
+npm run proto:generate
+\`\`\`
+
+## Deployment
+
+This service is deployed to Kubernetes with the following configuration:
+
+- **Namespace**: <%project.namespace%>
+<%#service.scaling%>
+- **Replicas**: <%service.scaling.minReplicas%> - <%service.scaling.maxReplicas%>
+<%/service.scaling%>
+<%^service.scaling%>
+- **Replicas**: 1 - 5
+<%/service.scaling%>
+- **Health Check**: gRPC Health Checking Protocol
+
+## Docker
+
+\`\`\`bash
+# Build (Node.js)
+docker build -t <%service.name%> ./services/<%service.name%>
+
+# Build (Go)
+docker build -t <%service.name%>-go -f Dockerfile.go ./services/<%service.name%>
+
+# Run
+docker run -p <%service.port%>:<%service.port%> <%service.name%>
+\`\`\`
+`;
+
 export const templates = {
   'docker-compose': dockerComposeTemplate,
   'k8s-deployment': k8sDeploymentTemplate,
