@@ -33,13 +33,16 @@ RUN npm run build || true
 FROM node:<%{nodeVersion}%>-slim AS runtime
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \\
-    curl \\
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
+
+# OpenTelemetry auto-instrumentation
+RUN npm install --omit=dev @opentelemetry/api @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-prometheus @opentelemetry/sdk-node @opentelemetry/resources @opentelemetry/semantic-conventions
 
 <%#env%>
 <%#.%>
@@ -47,7 +50,15 @@ ENV <%{key}%>=<%{value}%>
 <%/.%>
 <%/env%>
 
+ENV OTEL_NODE_ENABLED=true
+ENV OTEL_SERVICE_NAME=<%service.name%>
+ENV OTEL_TRACES_EXPORTER=prometheus
+ENV OTEL_METRICS_EXPORTER=prometheus
+ENV OTEL_EXPORTER_PROMETHEUS_PORT=9464
+ENV OTEL_RESOURCE_ATTRIBUTES=service.name=<%service.name%>,service.namespace=<%project.namespace%>
+
 EXPOSE <%{port}%>
+EXPOSE 9464
 <%#healthCheck%>
 <%#path%>
 HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\
@@ -59,7 +70,7 @@ HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retri
 CMD [<%#.%><%{this}%>, <%/.%>]
 <%/command%>
 <%^command%>
-CMD ["node", "dist/index.js"]
+CMD ["node", "--require", "@opentelemetry/auto-instrumentations-node/register", "dist/index.js"]
 <%/command%>
 `;
 
@@ -330,6 +341,10 @@ spec:
         app: <%service.name%>
         app.kubernetes.io/name: <%service.name%>
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: <%service.name%>
           image: <%service.image%><%^service.image%>docker.io/<%project.github.owner%>/<%project.name%>-<%service.name%>:latest<%/service.image%>
@@ -337,6 +352,9 @@ spec:
           ports:
             - name: http
               containerPort: <%service.port%>
+              protocol: TCP
+            - name: metrics
+              containerPort: 9464
               protocol: TCP
           env:
 <%#service.env%>
@@ -385,6 +403,12 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
 `;
 
 const k8sServiceTemplate = `apiVersion: v1
@@ -1019,6 +1043,48 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     category: 'infra',
     perService: false,
     outputPath: 'terraform/main.tf',
+  },
+  'grpc-node-service': {
+    description: 'gRPC service implementation for Node.js using @grpc/grpc-js.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/src/index.ts',
+  },
+  'grpc-go-service': {
+    description: 'gRPC service implementation for Go using google.golang.org/grpc.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/cmd/server/main.go',
+  },
+  'grpc-dockerfile-node': {
+    description: 'Multi-stage Dockerfile for gRPC Node.js services with protobuf compilation.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'grpc-dockerfile-go': {
+    description: 'Multi-stage Dockerfile for gRPC Go services with protobuf compilation.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'grpc-node-package-json': {
+    description: 'package.json for gRPC Node.js services with @grpc/grpc-js and protobuf deps.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/package.json',
+  },
+  'grpc-go-mod': {
+    description: 'go.mod for gRPC Go services with grpc and protobuf dependencies.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/go.mod',
+  },
+  'grpc-readme': {
+    description: 'Per-service README for gRPC services with proto usage examples.',
+    category: 'documentation',
+    perService: true,
+    outputPath: 'services/<name>/README.md',
   },
 };
 
