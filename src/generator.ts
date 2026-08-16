@@ -492,12 +492,15 @@ export class ProjectGenerator {
       }
 
       if (service.language === 'python') {
-        await this.writeRenderedFile(
-          join(serviceDir, 'requirements.txt'),
-          'fastapi==0.109.0\\nuvicorn==0.27.0\\npydantic==2.5.0\\n'
-        );
-      }
-    }
+              await this.writeRenderedFile(
+                join(serviceDir, 'requirements.txt'),
+                'fastapi==0.109.0\\\\nuvicorn==0.27.0\\\\npydantic==2.5.0\\\\n'
+              );
+            }
+
+            // Generate OpenTelemetry instrumentation file for the service
+            await this.generateOpenTelemetryFile(service, serviceDir);
+          }
 
   private async generateDatabaseFiles(): Promise<void> {
     const dbDir = join(this.outputDir, 'k8s', 'databases');
@@ -764,5 +767,42 @@ override.tf.json
 *_override.tf.json
 `;
     await this.writeRenderedFile(join(terraformDir, '.gitignore'), gitignore);
+  }
+
+  /**
+   * Generates OpenTelemetry instrumentation file based on service language
+   */
+  private async generateOpenTelemetryFile(service: ServiceSpec, serviceDir: string): Promise<void> {
+    let templateName: string;
+    let fileName: string;
+
+    switch (service.language) {
+      case 'node':
+        templateName = 'opentelemetry-node';
+        fileName = 'instrumentation.ts';
+        break;
+      case 'python':
+        templateName = 'opentelemetry-python';
+        fileName = 'instrumentation.py';
+        break;
+      case 'go':
+        templateName = 'opentelemetry-go';
+        fileName = 'instrumentation.go';
+        break;
+      case 'rust':
+        templateName = 'opentelemetry-rust';
+        fileName = 'instrumentation.rs';
+        break;
+      case 'java':
+        templateName = 'opentelemetry-java';
+        fileName = 'OpenTelemetryConfig.java';
+        break;
+      default:
+        return; // Skip unsupported languages
+    }
+
+    const context = this.buildContext(service);
+    const content = renderTemplate(templateName, context);
+    await this.writeRenderedFile(join(serviceDir, fileName), content);
   }
 }
