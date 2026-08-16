@@ -212,6 +212,9 @@ export class ProjectGenerator {
       // Generate Grafana provisioning (dashboard + datasource + provider)
       await this.generateGrafana();
 
+      // Generate Terraform (AWS platform: VPC + EKS + RDS per database)
+      await this.generateTerraform();
+
       const success = this.errors.length === 0;
       return {
         success,
@@ -551,5 +554,57 @@ tests/fixtures/
       join(monitoringDir, 'grafana-dashboard.json'),
       renderTemplate('grafana-dashboard', dashboardContext)
     );
+  }
+
+  // Terraform: emit `terraform/main.tf` (AWS EKS + per-database RDS) plus a
+  // variables.tf and a `.gitignore` so users don't accidentally commit
+  // `.terraform/` and `*.tfstate` files. The template is rendered once,
+  // using the first service's context (the template only references project
+  // + databases).
+  private async generateTerraform(): Promise<void> {
+    const terraformDir = join(this.outputDir, 'terraform');
+    await this.ensureDir(terraformDir);
+
+    const context = this.buildContext(this.spec.services[0]);
+    await this.writeRenderedFile(
+      join(terraformDir, 'main.tf'),
+      renderTemplate('terraform-aws', context)
+    );
+
+    // Variables file - small and worth keeping separate so users can
+    // override region / cluster name without touching the EKS module.
+    const variablesContent = `# Override defaults with terraform.tfvars or by passing -var flags.
+aws_region          = "us-east-1"
+cluster_name        = "${this.spec.name}"
+kubernetes_version  = "1.29"
+node_instance_type  = "m6i.large"
+node_min_size       = 2
+node_max_size       = 10
+node_desired_size   = 3
+`;
+    await this.writeRenderedFile(join(terraformDir, 'variables.tf'), variablesContent);
+
+    // .gitignore - never commit Terraform state or local plugin cache.
+    const gitignore = `# Local Terraform state
+.terraform/
+.terraform.lock.hcl
+
+# State files (use remote backend; never commit)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files containing secrets
+*.tfvars
+!example.tfvars
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+`;
+    await this.writeRenderedFile(join(terraformDir, '.gitignore'), gitignore);
   }
 }

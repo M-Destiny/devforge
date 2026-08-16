@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   renderTemplate,
   listTemplates,
+  listTemplatesWithMetadata,
+  getTemplateMetadata,
   getTemplatePlaceholders,
   templates,
 } from '../../src/templates.js';
@@ -172,5 +174,102 @@ describe('getTemplatePlaceholders', () => {
       expect(placeholders).toEqual(sorted);
       expect(new Set(placeholders).size).toBe(placeholders.length);
     }
+  });
+});
+
+describe('listTemplatesWithMetadata', () => {
+  it('returns one entry per template', () => {
+    const meta = listTemplatesWithMetadata();
+    expect(meta.length).toBe(Object.keys(templates).length);
+  });
+
+  it('includes the core templates with valid categories', () => {
+    const meta = listTemplatesWithMetadata();
+    const byName = new Map(meta.map((m) => [m.name, m]));
+    const coreNames = [
+      'docker-compose',
+      'k8s-deployment',
+      'k8s-hpa',
+      'github-actions',
+      'Makefile',
+      'terraform-aws',
+    ];
+    for (const n of coreNames) {
+      expect(byName.get(n), `missing metadata for ${n}`).toBeDefined();
+      expect(byName.get(n)!.description).not.toBe('(no description)');
+      expect(['docker', 'kubernetes', 'helm', 'ci', 'observability', 'infra', 'documentation']).toContain(
+        byName.get(n)!.category
+      );
+    }
+  });
+
+  it('flags per-service templates correctly', () => {
+    const meta = listTemplatesWithMetadata();
+    const byName = new Map(meta.map((m) => [m.name, m]));
+    expect(byName.get('k8s-deployment')!.perService).toBe(true);
+    expect(byName.get('dockerfile-node')!.perService).toBe(true);
+    expect(byName.get('docker-compose')!.perService).toBe(false);
+    expect(byName.get('Makefile')!.perService).toBe(false);
+  });
+});
+
+describe('getTemplateMetadata', () => {
+  it('returns metadata for a known template', () => {
+    const meta = getTemplateMetadata('k8s-deployment');
+    expect(meta).not.toBeNull();
+    expect(meta!.name).toBe('k8s-deployment');
+    expect(meta!.category).toBe('kubernetes');
+    expect(meta!.perService).toBe(true);
+  });
+
+  it('returns null for an unknown template', () => {
+    expect(getTemplateMetadata('not-a-real-template')).toBeNull();
+  });
+
+  it('returns the Terraform entry with infra category', () => {
+    const meta = getTemplateMetadata('terraform-aws');
+    expect(meta).not.toBeNull();
+    expect(meta!.category).toBe('infra');
+    expect(meta!.perService).toBe(false);
+    expect(meta!.outputPath).toContain('terraform');
+  });
+});
+
+describe('terraform-aws template', () => {
+  it('renders AWS provider + EKS module with no leaked tags', () => {
+    const out = renderTemplate(
+      'terraform-aws',
+      ctx({
+        ...ctx(),
+        databases: [
+          { name: 'postgres', type: 'postgres', version: '15', size: '10Gi', port: 5432 },
+        ],
+      })
+    );
+    expect(out).not.toMatch(/<%[^%]*%>/);
+    expect(out).toContain('hashicorp/aws');
+    expect(out).toContain('module "eks"');
+    expect(out).toMatch(/cluster_name\s+=\s+var\.cluster_name/);
+  });
+
+  it('includes an RDS module per database', () => {
+    const withDb = ctx({
+      ...ctx(),
+      databases: [
+        { name: 'postgres', type: 'postgres', version: '15', size: '10Gi', port: 5432 },
+        { name: 'redis', type: 'redis', version: '7', size: '1Gi', port: 6379 },
+      ],
+    });
+    const out = renderTemplate('terraform-aws', withDb);
+    expect(out).toContain('module "rds_postgres"');
+    expect(out).toContain('module "rds_redis"');
+    expect(out).toContain('db_postgres_endpoint');
+    expect(out).toContain('db_redis_endpoint');
+  });
+
+  it('renders without databases (no RDS module leaked in)', () => {
+    const out = renderTemplate('terraform-aws', ctx()); // empty databases
+    expect(out).not.toContain('module "rds_');
+    expect(out).toContain('module "eks"');
   });
 });
