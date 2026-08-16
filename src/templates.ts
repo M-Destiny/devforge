@@ -1008,24 +1008,6 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     perService: false,
     outputPath: 'terraform/main.tf',
   },
-  'dockerfile-go': {
-    description: 'Multi-stage Dockerfile for Go services (builder + runtime Alpine).',
-    category: 'docker',
-    perService: true,
-    outputPath: 'services/<name>/Dockerfile',
-  },
-  'dockerfile-rust': {
-    description: 'Multi-stage Dockerfile for Rust services (cargo-chef for dependency caching).',
-    category: 'docker',
-    perService: true,
-    outputPath: 'services/<name>/Dockerfile',
-  },
-  'dockerfile-java': {
-    description: 'Multi-stage Dockerfile for Java services (Maven builder + Eclipse Temurin runtime).',
-    category: 'docker',
-    perService: true,
-    outputPath: 'services/<name>/Dockerfile',
-  },
 };
 
 export function listTemplates(): string[] {
