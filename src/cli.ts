@@ -257,6 +257,88 @@ program
   );
 
 program
+  .command('validate-templates')
+  .description('Validate all templates against a sample context to catch missing placeholders')
+  .option('--json', 'Print results as JSON')
+  .action(async (options: { json?: boolean }) => {
+    // Build a comprehensive sample context
+    const sampleService: ServiceSpec = {
+      name: 'api-gateway',
+      language: 'node',
+      port: 3000,
+      dependencies: ['auth-service'],
+      env: { NODE_ENV: 'production', LOG_LEVEL: 'info' },
+      healthCheck: { path: '/health', interval: '30s', timeout: '10s', retries: 3 },
+      scaling: { minReplicas: 2, maxReplicas: 10, targetCPUUtilization: 70, targetMemoryUtilization: 80 },
+      image: 'myregistry/api-gateway:latest',
+      command: ['node', 'dist/index.js'],
+    };
+    const sampleDb: DatabaseSpec = {
+      name: 'postgres',
+      type: 'postgres',
+      version: '15',
+      size: '10Gi',
+      port: 5432,
+    };
+    const sampleSpec: ProjectSpec = {
+      name: 'demo',
+      namespace: 'production',
+      services: [sampleService],
+      databases: [sampleDb],
+      ingress: {
+        enabled: true,
+        rules: [
+          { host: 'api.example.com', path: '/', service: 'api-gateway', servicePort: 3000 },
+        ],
+        tls: [{ hosts: ['api.example.com'], secretName: 'platform-tls' }],
+      },
+      github: { owner: 'acme', repo: 'demo' },
+      framework: 'nextjs',
+      region: 'iad',
+    };
+
+    const ctx: TemplateContext = {
+      project: sampleSpec,
+      service: sampleService,
+      services: [sampleService],
+      allServices: [sampleService],
+      databases: [sampleDb],
+      allDatabases: [sampleDb],
+      generatedAt: new Date().toISOString(),
+      ingress: sampleSpec.ingress,
+    };
+
+    const results = validateAllTemplates(ctx);
+
+    if (options.json) {
+      const out: Record<string, string[]> = {};
+      for (const [name, missing] of results) {
+        out[name] = missing;
+      }
+      console.log(JSON.stringify(out, null, 2));
+      return;
+    }
+
+    if (results.size === 0) {
+      console.log('✅ All templates validate successfully - no missing placeholders');
+      return;
+    }
+
+    console.log('⚠️  Templates with missing placeholders:\n');
+    let totalMissing = 0;
+    for (const [name, missing] of results) {
+      console.log(`  ${name}:`);
+      for (const m of missing) {
+        console.log(`    - ${m}`);
+        totalMissing++;
+      }
+      console.log('');
+    }
+    console.log(`${results.size} template(s) have ${totalMissing} missing placeholder(s) total`);
+    process.exit(1);
+  });
+
+program
   .command('scaffold')
   .description('Interactively scaffold a new project')
   .argument('<name>', 'Project name')

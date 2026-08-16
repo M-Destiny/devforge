@@ -61,6 +61,10 @@ export interface ProjectSpec {
     repo: string;
     branch?: string;
   };
+  /** Optional framework identifier for platform configs (e.g. vercel, nextjs) */
+  framework?: string;
+  /** Optional region for platform configs (e.g. fly.io, vercel) */
+  region?: string;
 }
 
 export interface IngressSpec {

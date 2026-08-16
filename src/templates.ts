@@ -1058,13 +1058,73 @@ export function getTemplatePlaceholders(templateName: string): string[] {
   // placeholders that need to resolve against the TemplateContext. Skip section
   // tags (<%#foo%>, <%/foo%>, <%^foo%>, <%!comment%>, <%{raw}%>, <%.%>) which
   // are control flow or lambdas, not data lookups.
-  const variableTag = /<%([\^/!{#]|\.[^%]*)?\s*([A-Za-z0-9_.]+)\s*%>/g;
+  const variableTag = /<%([\^/!{#]|\\.[^%]*)?\s*([A-Za-z0-9_.]+)\s*%>/g;
   const names = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = variableTag.exec(template)) !== null) {
     names.add(m[2]);
   }
   return Array.from(names).sort();
+}
+
+/**
+ * Validates that all placeholders in a template can be resolved against
+ * a sample TemplateContext. Returns an array of missing/unresolvable placeholders.
+ * If the array is empty, the template is valid.
+ */
+export function validateTemplatePlaceholders(
+  templateName: string,
+  context: TemplateContext
+): string[] {
+  const placeholders = getTemplatePlaceholders(templateName);
+  const missing: string[] = [];
+
+  // Helper to check if a dotted path exists in an object
+  function hasPath(obj: unknown, path: string): boolean {
+    if (obj === null || obj === undefined) return false;
+    const parts = path.split('.');
+    let current: unknown = obj;
+    for (const part of parts) {
+      if (current === null || current === undefined) return false;
+      if (typeof current !== 'object') return false;
+      if (!(part in current)) return false;
+      current = (current as Record<string, unknown>)[part];
+    }
+    return true;
+  }
+
+  // Known Mustache special paths that are valid in sections but don't need
+  // explicit context keys (they're resolved by Mustache at render time).
+  const mustacheSpecialPaths = new Set(['.', 'this']);
+
+  for (const placeholder of placeholders) {
+    // Skip Mustache special iteration context references
+    if (mustacheSpecialPaths.has(placeholder)) continue;
+
+    if (!hasPath(context, placeholder)) {
+      missing.push(placeholder);
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * Validates all templates against a sample context and returns a map of
+ * template name -> missing placeholders. Templates with no missing placeholders
+ * are not included in the result.
+ */
+export function validateAllTemplates(
+  context: TemplateContext
+): Map<string, string[]> {
+  const results = new Map<string, string[]>();
+  for (const name of listTemplates()) {
+    const missing = validateTemplatePlaceholders(name, context);
+    if (missing.length > 0) {
+      results.set(name, missing);
+    }
+  }
+  return results;
 }
 // PodDisruptionBudget (k8s-pdb)
 const k8sPDBTemplate = `apiVersion: policy/v1
