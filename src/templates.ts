@@ -75,8 +75,8 @@ COPY . .
 FROM python:<%{pythonVersion}%>-slim AS runtime
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \\
-    curl \\
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/.cache/pip /root/.cache/pip
@@ -92,7 +92,7 @@ ENV <%{key}%>=<%{value}%>
 EXPOSE <%{port}%>
 <%#healthCheck%>
 <%#path%>
-HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \
   CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
 <%/path%>
 <%/healthCheck%>
@@ -103,6 +103,101 @@ CMD [<%#.%><%{this}%>, <%/.%>]
 <%^command%>
 CMD ["python", "-m", "src"]
 <%/command%>
+`;
+
+const dockerfileGo = `# syntax=docker/dockerfile:1
+FROM golang:<%{goVersion}%>-alpine AS builder
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache git make
+
+# Download dependencies first (caching)
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/bin/server ./cmd/server
+
+FROM alpine:<%{alpineVersion}%> AS runtime
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates curl tzdata \
+    && update-ca-certificates
+
+# Create non-root user
+RUN addgroup -g 1000 -S appgroup && \
+    adduser -u 1000 -S appuser -G appgroup
+
+# Copy binary from builder
+COPY --from=builder /app/bin/server /app/bin/server
+
+# Copy config files if any
+COPY --from=builder /app/config ./config
+
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
+
+USER appuser
+CMD ["/app/bin/server"]
+`;
+
+const dockerfileRust = `# syntax=docker/dockerfile:1
+FROM rust:<%{rustVersion}%>-slim AS planner
+WORKDIR /app
+RUN cargo install cargo-chef --locked
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM rust:<%{rustVersion}%>-slim AS builder
+WORKDIR /app
+RUN cargo install cargo-chef --locked
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY . .
+RUN cargo build --release
+
+FROM debian:<%{debianVersion}%>-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+
+COPY --from=builder /app/target/release/<%service.name%> /app/bin/server
+
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
+
+USER appuser
+CMD ["/app/bin/server"]
 `;
 
 const dockerComposeTemplate = `version: '3.9'
@@ -861,6 +956,18 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     category: 'infra',
     perService: false,
     outputPath: 'terraform/main.tf',
+  },
+  'dockerfile-go': {
+    description: 'Multi-stage Dockerfile for Go services (builder + runtime Alpine).',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'dockerfile-rust': {
+    description: 'Multi-stage Dockerfile for Rust services (cargo-chef for dependency caching).',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
   },
 };
 
