@@ -16,6 +16,7 @@ export interface Scaling {
 export interface ServiceSpec {
   name: string;
   language: 'node' | 'python' | 'go' | 'rust' | 'java';
+  protocol?: 'http' | 'grpc';
   port: number;
   dependencies?: string[];
   env?: Record<string, string>;

@@ -342,101 +342,161 @@ export class ProjectGenerator {
   }
 
   private async generateServiceFiles(service: ServiceSpec): Promise<void> {
-    const serviceDir = join(this.outputDir, 'services', service.name);
-    await this.ensureDir(serviceDir);
-    await this.ensureDir(join(serviceDir, 'src'));
+      const serviceDir = join(this.outputDir, 'services', service.name);
+      await this.ensureDir(serviceDir);
+      await this.ensureDir(join(serviceDir, 'src'));
 
-    // Generate Dockerfile
-    let dockerfileTemplate: string;
-    const dockerfileContext = {
-      ...this.buildContext(service),
-      nodeVersion: this.getNodeVersion(),
-      pythonVersion: this.getPythonVersion(),
-      pythonMajor: this.getPythonMajor(),
-      goVersion: this.getGoVersion(),
-      alpineVersion: this.getAlpineVersion(),
-      rustVersion: this.getRustVersion(),
-      debianVersion: this.getDebianVersion(),
-      javaVersion: this.getJavaVersion(),
-    };
-    
-    switch (service.language) {
-      case 'node':
-        dockerfileTemplate = 'dockerfile-node';
-        break;
-      case 'python':
-        dockerfileTemplate = 'dockerfile-python';
-        break;
-      case 'go':
-        dockerfileTemplate = 'dockerfile-go';
-        break;
-      case 'rust':
-        dockerfileTemplate = 'dockerfile-rust';
-        break;
-      case 'java':
-        dockerfileTemplate = 'dockerfile-java';
-        break;
-      default:
-        dockerfileTemplate = 'dockerfile-node';
-    }
-    
-    const dockerfileContent = renderTemplate(dockerfileTemplate, dockerfileContext);
-    await this.writeRenderedFile(join(serviceDir, 'Dockerfile'), dockerfileContent);
+      const isGrpc = service.protocol === 'grpc';
 
-    // Generate k8s manifests
-    const k8sDir = join(this.outputDir, 'k8s', 'services', service.name);
-    await this.ensureDir(k8sDir);
-
-    const deploymentContent = renderTemplate('k8s-deployment', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'deployment.yaml'), deploymentContent);
-
-    const serviceContent = renderTemplate('k8s-service', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'service.yaml'), serviceContent);
-
-    const hpaContent = renderTemplate('k8s-hpa', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'hpa.yaml'), hpaContent);
-
-    const pdbContent = renderTemplate('k8s-pdb', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'pdb.yaml'), pdbContent);
-
-    const netpolContent = renderTemplate('k8s-networkpolicy', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'networkpolicy.yaml'), netpolContent);
-
-    const configMapContent = renderTemplate('k8s-configmap', this.buildContext(service));
-    await this.writeRenderedFile(join(k8sDir, 'configmap.yaml'), configMapContent);
-
-    const readmeContent = renderTemplate('service-readme', this.buildContext(service));
-    await this.writeRenderedFile(join(serviceDir, 'README.md'), readmeContent);
-
-    if (service.language === 'node') {
-      const pkgJson = {
-        name: service.name,
-        version: '0.1.0',
-        description: `${service.name} microservice`,
-        main: 'dist/index.js',
-        scripts: {
-          build: 'tsc',
-          start: 'node dist/index.js',
-          dev: 'tsx src/index.ts',
-          test: 'vitest',
-          lint: 'eslint src --ext .ts',
-        },
-        dependencies: {},
-        devDependencies: {
-          typescript: '^5.0.0',
-          '@types/node': '^20.0.0',
-          tsx: '^4.0.0',
-          vitest: '^1.0.0',
-        },
+      // Generate Dockerfile
+      let dockerfileTemplate: string;
+      const dockerfileContext = {
+        ...this.buildContext(service),
+        nodeVersion: this.getNodeVersion(),
+        pythonVersion: this.getPythonVersion(),
+        pythonMajor: this.getPythonMajor(),
+        goVersion: this.getGoVersion(),
+        alpineVersion: this.getAlpineVersion(),
+        rustVersion: this.getRustVersion(),
+        debianVersion: this.getDebianVersion(),
+        javaVersion: this.getJavaVersion(),
       };
-      await this.writeRenderedFile(join(serviceDir, 'package.json'), JSON.stringify(pkgJson, null, 2));
-    }
 
-    if (service.language === 'python') {
-      await this.writeRenderedFile(
-        join(serviceDir, 'requirements.txt'),
-        'fastapi==0.109.0\nuvicorn==0.27.0\npydantic==2.5.0\n'
-      );
+      if (isGrpc) {
+        switch (service.language) {
+          case 'node':
+            dockerfileTemplate = 'grpc-dockerfile-node';
+            break;
+          case 'go':
+            dockerfileTemplate = 'grpc-dockerfile-go';
+            break;
+          default:
+            dockerfileTemplate = 'grpc-dockerfile-node';
+        }
+      } else {
+        switch (service.language) {
+          case 'node':
+            dockerfileTemplate = 'dockerfile-node';
+            break;
+          case 'python':
+            dockerfileTemplate = 'dockerfile-python';
+            break;
+          case 'go':
+            dockerfileTemplate = 'dockerfile-go';
+            break;
+          case 'rust':
+            dockerfileTemplate = 'dockerfile-rust';
+            break;
+          case 'java':
+            dockerfileTemplate = 'dockerfile-java';
+            break;
+          default:
+            dockerfileTemplate = 'dockerfile-node';
+        }
+      }
+
+      const dockerfileContent = renderTemplate(dockerfileTemplate, dockerfileContext);
+      await this.writeRenderedFile(join(serviceDir, 'Dockerfile'), dockerfileContent);
+
+      // Generate k8s manifests
+      const k8sDir = join(this.outputDir, 'k8s', 'services', service.name);
+      await this.ensureDir(k8sDir);
+
+      const deploymentContent = renderTemplate('k8s-deployment', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'deployment.yaml'), deploymentContent);
+
+      const serviceContent = renderTemplate('k8s-service', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'service.yaml'), serviceContent);
+
+      const hpaContent = renderTemplate('k8s-hpa', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'hpa.yaml'), hpaContent);
+
+      const pdbContent = renderTemplate('k8s-pdb', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'pdb.yaml'), pdbContent);
+
+      const netpolContent = renderTemplate('k8s-networkpolicy', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'networkpolicy.yaml'), netpolContent);
+
+      const configMapContent = renderTemplate('k8s-configmap', this.buildContext(service));
+      await this.writeRenderedFile(join(k8sDir, 'configmap.yaml'), configMapContent);
+
+      // Generate protocol-specific files
+      if (isGrpc) {
+        await this.ensureDir(join(serviceDir, 'proto'));
+      
+        // Generate gRPC proto file
+        const protoContent = renderTemplate('grpc-proto', this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'proto', `${service.name}.proto`), protoContent);
+
+        // Generate gRPC service implementation
+        let grpcServiceTemplate: string;
+        let grpcPackageJson: string | null = null;
+        let grpcGoMod: string | null = null;
+
+        switch (service.language) {
+          case 'node':
+            grpcServiceTemplate = 'grpc-node-service';
+            grpcPackageJson = renderTemplate('grpc-node-package-json', this.buildContext(service));
+            break;
+          case 'go':
+            grpcServiceTemplate = 'grpc-go-service';
+            grpcGoMod = renderTemplate('grpc-go-mod', this.buildContext(service));
+            break;
+          default:
+            grpcServiceTemplate = 'grpc-node-service';
+            grpcPackageJson = renderTemplate('grpc-node-package-json', this.buildContext(service));
+        }
+
+        const grpcServiceContent = renderTemplate(grpcServiceTemplate, this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'src', 'index.ts'), grpcServiceContent);
+
+        if (grpcPackageJson) {
+          await this.writeRenderedFile(join(serviceDir, 'package.json'), grpcPackageJson);
+        }
+
+        if (grpcGoMod) {
+          await this.writeRenderedFile(join(serviceDir, 'go.mod'), grpcGoMod);
+        }
+
+        // Generate gRPC README
+        const grpcReadmeContent = renderTemplate('grpc-readme', this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'README.md'), grpcReadmeContent);
+      } else {
+        // Standard HTTP service README
+        const readmeContent = renderTemplate('service-readme', this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'README.md'), readmeContent);
+      }
+
+      if (service.language === 'node' && !isGrpc) {
+        const pkgJson = {
+          name: service.name,
+          version: '0.1.0',
+          description: `${service.name} microservice`,
+          main: 'dist/index.js',
+          scripts: {
+            build: 'tsc',
+            start: 'node dist/index.js',
+            dev: 'tsx src/index.ts',
+            test: 'vitest',
+            lint: 'eslint src --ext .ts',
+          },
+          dependencies: {},
+          devDependencies: {
+            typescript: '^5.0.0',
+            '@types/node': '^20.0.0',
+            tsx: '^4.0.0',
+            vitest: '^1.0.0',
+          },
+        };
+        await this.writeRenderedFile(join(serviceDir, 'package.json'), JSON.stringify(pkgJson, null, 2));
+      }
+
+      if (service.language === 'python') {
+        await this.writeRenderedFile(
+          join(serviceDir, 'requirements.txt'),
+          'fastapi==0.109.0\\nuvicorn==0.27.0\\npydantic==2.5.0\\n'
+        );
+      }
     }
   }
 

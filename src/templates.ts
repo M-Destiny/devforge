@@ -2417,4 +2417,12 @@ export const templates = {
   'opentelemetry-node': opentelemetryNodeTemplate,
   'opentelemetry-python': opentelemetryPythonTemplate,
   'dockerfile-java': dockerfileJava,
+  'grpc-proto': grpcProtoTemplate,
+  'grpc-node-service': grpcNodeServiceTemplate,
+  'grpc-go-service': grpcGoServiceTemplate,
+  'grpc-dockerfile-node': grpcDockerfileNodeTemplate,
+  'grpc-dockerfile-go': grpcDockerfileGoTemplate,
+  'grpc-node-package-json': grpcNodePackageJson,
+  'grpc-go-mod': grpcGoModTemplate,
+  'grpc-readme': grpcReadmeTemplate,
 };

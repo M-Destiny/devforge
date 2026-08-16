@@ -21,6 +21,7 @@ const ScalingSchema = z.object({
 const ServiceSpecSchema = z.object({
   name: z.string().min(1),
   language: z.enum(['node', 'python', 'go', 'rust', 'java']),
+  protocol: z.enum(['http', 'grpc']).optional(),
   port: z.number().min(1).max(65535),
   dependencies: z.array(z.string()).optional(),
   env: z.record(z.string()).optional(),
