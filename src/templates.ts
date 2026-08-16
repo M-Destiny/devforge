@@ -1716,6 +1716,102 @@ output "db_<%name%>_endpoint" {
 
 // Registry of all templates — placed after every const declaration to avoid
 // TDZ (temporal dead zone) forward references to k8s/helm templates below.
+
+// Deployment platform configs
+const vercelTemplate = `{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "<%project.framework%>",
+  "regions": ["iad1"]
+}
+`;
+
+const flyTemplate = `# Fly.io configuration for <%service.name%>
+app = "<%service.name%>"
+primary_region = "<%project.region%>"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+`;
+
+const railwayTemplate = `# Railway configuration for <%service.name%>
+buildCommand = "npm run build"
+startCommand = "npm start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+`;
+
+const renderPlatformTemplate = `# Render configuration for <%service.name%>
+services:
+  - type: web
+    name: <%service.name%>
+    env: node
+    plan: starter
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+`;
+
+const cloudflareWorkersTemplate = `// Cloudflare Workers config for <%service.name%>
+name = "<%service.name%>"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+[vars]
+NODE_ENV = "production"
+`;
+
+// OpenTelemetry instrumentation templates
+const opentelemetryNodeTemplate = `// OpenTelemetry Node.js instrumentation for <%service.name%>
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  }),
+  serviceName: '<%service.name%>',
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+
+process.on('SIGTERM', () => {
+  sdk.shutdown()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Error shutting down OpenTelemetry SDK', err);
+      process.exit(1);
+    });
+});
+`;
+
+const opentelemetryPythonTemplate = `# OpenTelemetry Python instrumentation for <%service.name%>
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.auto_instrumentation import (  # type: ignore[attr-defined]
+    sitecustomize,
+)
+
+provider = TracerProvider()
+processor = BatchSpanProcessor(
+    OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")
+)
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
+
+tracer = trace.get_tracer("<%service.name%>")
+`;
+
 export const templates = {
   'docker-compose': dockerComposeTemplate,
   'k8s-deployment': k8sDeploymentTemplate,
@@ -1748,7 +1844,7 @@ export const templates = {
   'vercel': vercelTemplate,
   'fly': flyTemplate,
   'railway': railwayTemplate,
-  'render': renderTemplate,
+  'render': renderPlatformTemplate,
   'cloudflare-workers': cloudflareWorkersTemplate,
   'opentelemetry-node': opentelemetryNodeTemplate,
   'opentelemetry-python': opentelemetryPythonTemplate,
