@@ -2379,6 +2379,147 @@ docker build -t <%service.name%>-go -f Dockerfile.go ./services/<%service.name%>
 docker run -p <%service.port%>:<%service.port%> <%service.name%>
 \`\`\`
 `;
+// Kubernetes Secret template with SealedSecret and External Secrets hints
+const k8sSecretTemplate = `apiVersion: v1
+kind: Secret
+metadata:
+  name: <%service.name%>-secrets
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+type: Opaque
+stringData:
+<%#service.env%>
+<%#.%>
+  <%{key}%>: "<%value%>"
+<%/.%>
+<%/service.env%>
+<%^service.env%>
+  # No environment variables defined in spec
+  # Add your secrets here:
+  # API_KEY: "your-api-key"
+  # DATABASE_PASSWORD: "your-db-password"
+<%/service.env%>
+---
+# For production, consider using SealedSecrets (bitnami-labs/sealed-secrets)
+# or External Secrets Operator (external-secrets.io) with a secret store.
+# Example SealedSecret workflow:
+# 1. Install kubeseal: brew install kubeseal
+# 2. Seal this secret: kubeseal --controller-name=sealed-secrets --controller-namespace=kube-system -o yaml < this-secret.yaml > sealed-secret.yaml
+# 3. Commit sealed-secret.yaml to Git (safe!)
+`;
+
+// ArgoCD Application template for GitOps deployment
+const argocdApplicationTemplate = `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: <%project.name%>
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/<%project.github.owner%>/<%project.github.repo%>
+    targetRevision: <%project.github.branch%><%^project.github.branch%>main<%/project.github.branch%>
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: <%project.namespace%>
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+---
+# Apply with: kubectl apply -f k8s/argocd-application.yaml
+# Requires: ArgoCD installed in cluster (kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml)
+`;
+
+// Prometheus ServiceMonitor for Prometheus Operator
+const serviceMonitorTemplate = `apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    release: prometheus
+    app: <%service.name%>
+spec:
+  selector:
+    matchLabels:
+      app: <%service.name%>
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - <%project.namespace%>
+---
+# Requires: Prometheus Operator (kube-prometheus-stack) installed in cluster
+# The ServiceMonitor CRD must be available
+# Scrapes /metrics endpoint on the service's http port
+`;
+
+// KEDA ScaledObject for event-driven autoscaling
+const kedaScaledObjectTemplate = `apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: <%service.name%>-keda
+  namespace: <%project.namespace%>
+spec:
+  scaleTargetRef:
+    name: <%service.name%>
+  pollingInterval: 15
+  cooldownPeriod: 300
+  minReplicaCount: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>
+  maxReplicaCount: <%service.scaling.maxReplicas%><%^service.scaling%>10<%/service.scaling%>
+  advanced:
+    restoreToOriginalReplicaCount: false
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 10
+              periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+            - type: Pods
+              value: 4
+              periodSeconds: 15
+          selectPolicy: Max
+  triggers:
+    - type: cpu
+      metadata:
+        type: Utilization
+        value: "<%service.scaling.targetCPUUtilization%><%^service.scaling.targetCPUUtilization%>70<%/service.scaling.targetCPUUtilization%>"
+    - type: memory
+      metadata:
+        type: Utilization
+        value: "<%service.scaling.targetMemoryUtilization%><%^service.scaling.targetMemoryUtilization%>80<%/service.scaling.targetMemoryUtilization%>"
+---
+# Requires: KEDA installed in cluster (kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.14.0/keda-2.14.0.yaml)
+# Supports: CPU, Memory, Kafka, RabbitMQ, Azure Queue, AWS SQS, GCP Pub/Sub, and 60+ scalers
+# Add custom triggers by editing this file (e.g., Kafka lag, HTTP requests, cron)
+`;
+
 // Docker Swarm stack
 const dockerSwarmTemplate = `version: '3.9'
 
@@ -2482,10 +2623,12 @@ export const templates = {
   'k8s-hpa': k8sHPATemplate,
   'k8s-ingress': k8sIngressTemplate,
   'k8s-configmap': k8sConfigMapTemplate,
+  'k8s-secret': k8sSecretTemplate,
   'dockerfile-node': dockerfileNode,
   'dockerfile-python': dockerfilePython,
   'dockerfile-go': dockerfileGo,
   'dockerfile-rust': dockerfileRust,
+  'dockerfile-java': dockerfileJava,
   'github-actions': githubActionsTemplate,
   'prometheus-cm': prometheusConfigMapTemplate,
   'service-readme': serviceReadmeTemplate,
@@ -2511,8 +2654,10 @@ export const templates = {
   'cloudflare-workers': cloudflareWorkersTemplate,
   'opentelemetry-node': opentelemetryNodeTemplate,
   'opentelemetry-python': opentelemetryPythonTemplate,
-  'dockerfile-java': dockerfileJava,
   'docker-swarm': dockerSwarmTemplate,
+  'argocd-application': argocdApplicationTemplate,
+  'service-monitor': serviceMonitorTemplate,
+  'keda-scaledobject': kedaScaledObjectTemplate,
   'grpc-proto': grpcProtoTemplate,
   'grpc-node-service': grpcNodeServiceTemplate,
   'grpc-go-service': grpcGoServiceTemplate,
