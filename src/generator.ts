@@ -1,7 +1,7 @@
 import { writeFile, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import * as Diff from 'diff';
-import { Task, tasks } from 'listr2';
+import { Listr, ListrTask } from 'listr2';
 import type {
   ProjectSpec,
   ServiceSpec,
@@ -175,7 +175,7 @@ export class ProjectGenerator {
       await this.ensureDir(this.outputDir);
 
       // Create progress tasks using listr2
-      const tasks = new Listr([
+      const tasks: ListrTask[] = [
         {
           title: 'Generating docker-compose.yml',
           task: async () => {
@@ -255,7 +255,9 @@ export class ProjectGenerator {
             await this.generateTerraform();
           },
         },
-      ], {
+      ];
+
+      const listr = new Listr(tasks, {
         concurrent: false,
         rendererOptions: {
           collapse: false,
@@ -264,7 +266,7 @@ export class ProjectGenerator {
         },
       });
 
-      await tasks.run();
+      await listr.run();
 
       const success = this.errors.length === 0;
       return {
