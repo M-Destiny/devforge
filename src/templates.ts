@@ -689,8 +689,221 @@ restart-<%name%>: ## Restart <%name%>
 
 <%/services%>`;
 
+/**
+ * Human-readable descriptions for each template, surfaced by `list-templates`
+ * and `info-template`. Keeping the metadata in one place avoids drift between
+ * the template name registry (`templates` below) and what the CLI prints.
+ */
+export interface TemplateMetadata {
+  name: string;
+  description: string;
+  /** What kind of artifact this template renders. Drives the `info-template` summary. */
+  category: 'docker' | 'kubernetes' | 'helm' | 'ci' | 'observability' | 'infra' | 'documentation';
+  /** True for templates that render once per service (most k8s/services templates). */
+  perService: boolean;
+  /** Where the rendered file lives under the chosen output directory. */
+  outputPath: string;
+}
+
+export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>> = {
+  'docker-compose': {
+    description: 'Docker Compose stack with all services, databases, networks, and health checks.',
+    category: 'docker',
+    perService: false,
+    outputPath: 'docker-compose.yml',
+  },
+  'dockerfile-node': {
+    description: 'Multi-stage Dockerfile for Node.js services (builder + runtime slims).',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'dockerfile-python': {
+    description: 'Multi-stage Dockerfile for Python services (builder + runtime slims).',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'k8s-deployment': {
+    description: 'Kubernetes Deployment with probes, resource limits, and env from spec.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/deployment.yaml',
+  },
+  'k8s-service': {
+    description: 'Kubernetes Service (ClusterIP) exposing the service port.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/service.yaml',
+  },
+  'k8s-hpa': {
+    description: 'HorizontalPodAutoscaler with CPU + optional memory utilization.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/hpa.yaml',
+  },
+  'k8s-ingress': {
+    description: 'Ingress with TLS, cert-manager, and per-service routing rules.',
+    category: 'kubernetes',
+    perService: false,
+    outputPath: 'k8s/ingress.yaml',
+  },
+  'k8s-configmap': {
+    description: 'ConfigMap with the service environment and dependency list.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/configmap.yaml',
+  },
+  'k8s-pdb': {
+    description: 'PodDisruptionBudget requiring at least 1 pod available during rollouts.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/pdb.yaml',
+  },
+  'k8s-networkpolicy': {
+    description: 'Per-service NetworkPolicy: ingress from dependencies + ingress-nginx, egress to DNS + dependencies.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/networkpolicy.yaml',
+  },
+  'k8s-networkpolicy-strict': {
+    description: 'Strict per-service NetworkPolicy: allow only pods in the same namespace, DNS outbound.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/service-networkpolicies/<name>.yaml',
+  },
+  'k8s-netpol-default-deny': {
+    description: 'Cluster-wide default-deny NetworkPolicy. Use as a baseline before adding allow rules.',
+    category: 'kubernetes',
+    perService: false,
+    outputPath: 'k8s/networkpolicies/default-deny.yaml',
+  },
+  'helm-chart': {
+    description: 'Helm Chart.yaml with project metadata, maintainers, and home URL.',
+    category: 'helm',
+    perService: false,
+    outputPath: 'helm/<project.name>/Chart.yaml',
+  },
+  'helm-deployment': {
+    description: 'Helm template for a single-service Deployment.',
+    category: 'helm',
+    perService: true,
+    outputPath: 'helm/<project.name>/templates/<name>-deployment.yaml',
+  },
+  'helm-service': {
+    description: 'Helm template for a single-service Service.',
+    category: 'helm',
+    perService: true,
+    outputPath: 'helm/<project.name>/templates/<name>-service.yaml',
+  },
+  'helm-values': {
+    description: 'Helm values.yaml with autoscaling, image, ingress, and resource defaults.',
+    category: 'helm',
+    perService: false,
+    outputPath: 'helm/<project.name>/values.yaml',
+  },
+  'helm-notes': {
+    description: 'Helm NOTES.txt — printed after `helm install` to summarise services.',
+    category: 'helm',
+    perService: false,
+    outputPath: 'helm/<project.name>/templates/NOTES.txt',
+  },
+  'github-actions': {
+    description: 'GitHub Actions matrix build + push + kubectl deploy on main.',
+    category: 'ci',
+    perService: false,
+    outputPath: '.github/workflows/deploy.yml',
+  },
+  'prometheus-cm': {
+    description: 'Prometheus ConfigMap with per-service and per-database scrape configs.',
+    category: 'observability',
+    perService: false,
+    outputPath: 'k8s/monitoring/prometheus-configmap.yaml',
+  },
+  'grafana-dashboard': {
+    description: 'Grafana dashboard JSON with cluster health + per-service request / error / latency panels.',
+    category: 'observability',
+    perService: false,
+    outputPath: 'k8s/monitoring/grafana-dashboard.json',
+  },
+  'grafana-datasource': {
+    description: 'Grafana datasource ConfigMap pointing at the in-cluster Prometheus.',
+    category: 'observability',
+    perService: false,
+    outputPath: 'k8s/monitoring/grafana-datasource.yaml',
+  },
+  'grafana-dashboard-provider': {
+    description: 'Grafana dashboard provider ConfigMap for sidecar provisioning.',
+    category: 'observability',
+    perService: false,
+    outputPath: 'k8s/monitoring/grafana-dashboard-provider.yaml',
+  },
+  'service-readme': {
+    description: 'Per-service README with overview, dependencies, env, and deployment notes.',
+    category: 'documentation',
+    perService: true,
+    outputPath: 'services/<name>/README.md',
+  },
+  'nginx-conf': {
+    description: 'Top-level nginx reverse-proxy config with per-service upstream + health endpoint.',
+    category: 'infra',
+    perService: false,
+    outputPath: 'nginx.conf',
+  },
+  'Makefile': {
+    description: 'Makefile with up, down, logs, build, test, lint, and per-service target aliases.',
+    category: 'infra',
+    perService: false,
+    outputPath: 'Makefile',
+  },
+  'terraform-aws': {
+    description: 'Terraform module for AWS: VPC, EKS, RDS, ElastiCache, IAM, and the EKS node group.',
+    category: 'infra',
+    perService: false,
+    outputPath: 'terraform/main.tf',
+  },
+};
+
 export function listTemplates(): string[] {
   return Object.keys(templates);
+}
+
+/**
+ * Returns rich metadata for every template that ships with DevForge. Used by
+ * the `list-templates --verbose` and `info-template <name>` CLI commands.
+ * Templates without a metadata entry are still listed — they just get
+ * fall-through defaults so we never break an unknown template.
+ */
+export function listTemplatesWithMetadata(): TemplateMetadata[] {
+  return Object.keys(templates).map((name) => {
+    const meta = templateDescriptions[name];
+    return {
+      name,
+      description: meta?.description ?? '(no description)',
+      category: meta?.category ?? 'infra',
+      perService: meta?.perService ?? false,
+      outputPath: meta?.outputPath ?? name,
+    };
+  });
+}
+
+/**
+ * Returns metadata for a single template, or `null` if the template name is
+ * unknown. The binary form (`name` only) is kept for backwards compatibility
+ * with the existing `listTemplates()` API.
+ */
+export function getTemplateMetadata(name: string): TemplateMetadata | null {
+  if (!(name in templates)) {
+    return null;
+  }
+  const meta = templateDescriptions[name];
+  return {
+    name,
+    description: meta?.description ?? '(no description)',
+    category: meta?.category ?? 'infra',
+    perService: meta?.perService ?? false,
+    outputPath: meta?.outputPath ?? name,
+  };
 }
 
 export function renderTemplate(templateName: string, context: TemplateContext): string {
@@ -1229,6 +1442,171 @@ data:
           path: /etc/grafana/provisioning/dashboards
 `;
 
+// Terraform — AWS EKS platform for <%project.name%>. Provisions VPC, EKS
+// cluster, default node group, RDS Postgres <%#databases%>(<%name%> instance)<%/databases%>,
+// and an IAM role for the cluster. Apply from the generated terraform/ dir.
+const terraformAWSMainTemplate = `terraform {
+  required_version = ">= 1.5.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  backend "s3" {
+    bucket = "<%project.name%>-terraform-state"
+    key    = "platform/terraform.tfstate"
+    region = "us-east-1"
+    encrypt = true
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+variable "aws_region" {
+  description = "AWS region for all resources."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cluster_name" {
+  description = "EKS cluster name."
+  type        = string
+  default     = "<%project.name%>"
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version for the EKS control plane."
+  type        = string
+  default     = "1.29"
+}
+
+variable "node_instance_type" {
+  description = "EC2 instance type for the default node group."
+  type        = string
+  default     = "m6i.large"
+}
+
+variable "node_min_size" {
+  type    = number
+  default = 2
+}
+
+variable "node_max_size" {
+  type    = number
+  default = 10
+}
+
+variable "node_desired_size" {
+  type    = number
+  default = 3
+}
+
+# ----- VPC -----
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+
+  name = "\${var.cluster_name}-vpc"
+  cidr = "10.0.0.0/16"
+
+  azs             = ["\${var.aws_region}a", "\${var.aws_region}b", "\${var.aws_region}c"]
+  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  private_subnets = ["10.0.10.0/24", "10.0.11.0/24", "10.0.12.0/24"]
+
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    "kubernetes.io/cluster/\${var.cluster_name}" = "shared"
+  }
+}
+
+# ----- EKS -----
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.0"
+
+  cluster_name    = var.cluster_name
+  cluster_version = var.kubernetes_version
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+
+  cluster_endpoint_public_access  = true
+  cluster_endpoint_private_access = true
+
+  eks_managed_node_groups = {
+    default = {
+      instance_types = [var.node_instance_type]
+      min_size       = var.node_min_size
+      max_size       = var.node_max_size
+      desired_size   = var.node_desired_size
+
+      labels = {
+        role = "general"
+      }
+    }
+  }
+
+  tags = {
+    Environment = "<%project.namespace%>"
+    Project     = "<%project.name%>"
+  }
+}
+<%#databases%>
+# ----- RDS: <%name%> (<%type%> <%version%>) -----
+module "rds_<%name%>" {
+  source  = "terraform-aws-modules/rds/aws"
+  version = "~> 6.0"
+
+  identifier = "\${var.cluster_name>-<%name%>"
+
+  engine            = "<%type%>"
+  engine_version    = "<%version%>"
+  instance_class    = "db.t3.medium"
+  allocated_storage = 20
+
+  db_name  = "<%project.name%>"
+  username = "admin"
+  port     = <%port%>
+
+  vpc_security_group_ids = [module.vpc.default_security_group_id]
+  db_subnet_group_name   = module.vpc.database_subnet_group
+  publicly_accessible    = false
+
+  family = "<%type%><%version%>"
+
+  tags = {
+    Service = "<%name%>"
+  }
+}
+<%/databases%>
+# ----- Outputs -----
+output "cluster_endpoint" {
+  description = "EKS API endpoint."
+  value       = module.eks.cluster_endpoint
+}
+
+output "cluster_name" {
+  value = module.eks.cluster_name
+}
+
+output "kubeconfig_command" {
+  description = "Command to populate kubeconfig."
+  value       = "aws eks update-kubeconfig --name \${module.eks.cluster_name} --region \${var.aws_region}"
+}
+<%#databases%>
+
+output "db_<%name%>_endpoint" {
+  value = module.rds_<%name%>.db_instance_endpoint
+}
+<%/databases%>
+`;
+
 // Registry of all templates — placed after every const declaration to avoid
 // TDZ (temporal dead zone) forward references to k8s/helm templates below.
 export const templates = {
@@ -1257,4 +1635,5 @@ export const templates = {
   'grafana-dashboard': grafanaDashboardTemplate,
   'grafana-datasource': grafanaDatasourceTemplate,
   'grafana-dashboard-provider': grafanaDashboardProviderTemplate,
+  'terraform-aws': terraformAWSMainTemplate,
 };

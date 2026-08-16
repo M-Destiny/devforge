@@ -4,7 +4,57 @@ import { Command } from 'commander';
 import { readFile } from 'fs/promises';
 import { parseSpec, validateSpec } from './spec-parser.js';
 import { ProjectGenerator } from './generator.js';
-import { listTemplates } from './templates.js';
+import {
+  listTemplatesWithMetadata,
+  getTemplateMetadata,
+  getTemplatePlaceholders,
+  renderTemplate,
+} from './templates.js';
+import type { ProjectSpec, ServiceSpec, DatabaseSpec } from './types.js';
+
+/**
+ * Renders a template with a minimal but representative stub ProjectSpec so
+ * `info-template --sample` can show what a real output looks like. We don't
+ * read from a spec file because the goal is to show the template's *shape*,
+ * not validate a specific spec.
+ */
+function renderSampleForTemplate(name: string): string {
+  const sampleService: ServiceSpec = {
+    name: 'api-gateway',
+    language: 'node',
+    port: 3000,
+    dependencies: ['auth-service'],
+    env: { NODE_ENV: 'production', LOG_LEVEL: 'info' },
+    healthCheck: { path: '/health', interval: '30s', timeout: '10s', retries: 3 },
+    scaling: { minReplicas: 2, maxReplicas: 10, targetCPUUtilization: 70 },
+  };
+  const sampleDb: DatabaseSpec = {
+    name: 'postgres',
+    type: 'postgres',
+    version: '15',
+    size: '10Gi',
+    port: 5432,
+  };
+  const sampleSpec: ProjectSpec = {
+    name: 'demo',
+    namespace: 'production',
+    services: [sampleService],
+    databases: [sampleDb],
+    ingress: { enabled: true },
+    github: { owner: 'acme', repo: 'demo' },
+  };
+
+  const ctx = {
+    project: sampleSpec,
+    service: sampleService,
+    services: [sampleService],
+    allServices: [sampleService],
+    databases: [sampleDb],
+    allDatabases: [sampleDb],
+    generatedAt: new Date().toISOString(),
+  };
+  return renderTemplate(name, ctx);
+}
 
 const program = new Command();
 
@@ -104,11 +154,107 @@ program
 program
   .command('list-templates')
   .description('List all available templates')
-  .action(() => {
-    const templates = listTemplates();
+  .option('--verbose', 'Show description, category, and output path for each template')
+  .option('--json', 'Print metadata as JSON (machine-readable)')
+  .option(
+    '--category <category>',
+    'Filter by category (docker, kubernetes, helm, ci, observability, infra, documentation)'
+  )
+  .action((options: { verbose?: boolean; json?: boolean; category?: string }) => {
+    const all = listTemplatesWithMetadata();
+    const filtered = options.category
+      ? all.filter((t) => t.category === options.category)
+      : all;
+
+    if (options.json) {
+      console.log(JSON.stringify(filtered, null, 2));
+      return;
+    }
+
+    if (options.verbose) {
+      const byCategory = new Map<string, typeof filtered>();
+      for (const t of filtered) {
+        if (!byCategory.has(t.category)) byCategory.set(t.category, []);
+        byCategory.get(t.category)!.push(t);
+      }
+      console.log(`Available templates (${filtered.length} total, grouped by category):`);
+      for (const [category, items] of byCategory) {
+        console.log(`\n  ${category} (${items.length})`);
+        for (const t of items) {
+          const suffix = t.perService ? ' [per-service]' : '';
+          console.log(`    - ${t.name}${suffix}`);
+          console.log(`        ${t.description}`);
+          console.log(`        → ${t.outputPath}`);
+        }
+      }
+      return;
+    }
+
     console.log('Available templates:');
-    templates.forEach(t => console.log(`  - ${t}`));
+    filtered.forEach((t) => console.log(`  - ${t.name}`));
   });
+
+program
+  .command('info-template')
+  .alias('describe')
+  .description('Show details for a single template (description, placeholders, sample render)')
+  .argument('<name>', 'Template name (e.g. k8s-deployment)')
+  .option('--placeholders', 'Only show the placeholder list')
+  .option('--sample', 'Also show a sample render using a stub ProjectSpec')
+  .option('--json', 'Print output as JSON')
+  .action(
+    (
+      name: string,
+      options: { placeholders?: boolean; sample?: boolean; json?: boolean }
+    ) => {
+      const meta = getTemplateMetadata(name);
+      if (!meta) {
+        console.error(`❌ Unknown template: ${name}`);
+        console.error(`Run \`devforge list-templates\` to see available names.`);
+        process.exit(1);
+      }
+
+      const placeholders = getTemplatePlaceholders(name);
+
+      if (options.json) {
+        const out: Record<string, unknown> = { ...meta, placeholders };
+        if (options.sample) {
+          out.sample = renderSampleForTemplate(name);
+        }
+        console.log(JSON.stringify(out, null, 2));
+        return;
+      }
+
+      if (options.placeholders) {
+        console.log(placeholders.join('\n'));
+        return;
+      }
+
+      console.log(`\n📄 ${meta.name}`);
+      console.log(`   ${meta.description}\n`);
+      console.log(`   category:    ${meta.category}`);
+      console.log(`   per-service: ${meta.perService ? 'yes' : 'no'}`);
+      console.log(`   output:      ${meta.outputPath}`);
+      console.log(`   placeholders (${placeholders.length}):`);
+      for (const p of placeholders) {
+        console.log(`     - ${p}`);
+      }
+
+      if (options.sample) {
+        const sample = renderSampleForTemplate(name);
+        const lines = sample.split('\n');
+        console.log(`\n   sample render (${lines.length} lines):`);
+        console.log('   ' + '─'.repeat(60));
+        for (const line of lines.slice(0, 30)) {
+          console.log(`   ${line}`);
+        }
+        if (lines.length > 30) {
+          console.log(`   ... (${lines.length - 30} more lines truncated)`);
+        }
+      }
+      console.log('');
+    }
+  );
 
 program
   .command('scaffold')
