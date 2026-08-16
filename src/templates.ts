@@ -174,8 +174,8 @@ RUN cargo build --release
 FROM debian:<%{debianVersion}%>-slim AS runtime
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    ca-certificates curl \\
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
@@ -191,13 +191,52 @@ ENV <%{key}%>=<%{value}%>
 EXPOSE <%{port}%>
 <%#healthCheck%>
 <%#path%>
-HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\\\
   CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
 <%/path%>
 <%/healthCheck%>
 
 USER appuser
 CMD ["/app/bin/server"]
+`;
+
+const dockerfileJava = `# syntax=docker/dockerfile:1
+FROM maven:3.9-<%{javaVersion}%> AS builder
+WORKDIR /app
+
+# Download dependencies first (caching)
+COPY pom.xml ./
+RUN mvn dependency:go-offline -B
+
+COPY src ./src
+RUN mvn package -DskipTests
+
+FROM eclipse-temurin:<%{javaVersion}%> AS runtime
+WORKDIR /app
+
+# Create non-root user
+RUN groupadd -g 1000 -S appgroup && \\
+    adduser -u 1000 -S appuser -G appgroup
+
+# Copy jar from builder
+COPY --from=builder /app/target/*.jar /app/app.jar
+
+<%#env%>
+<%#.%>
+ENV <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+
+EXPOSE <%{port}%>
+<%#healthCheck%>
+<%#path%>
+HEALTHCHECK --interval=<%{interval}%> --timeout=<%{timeout}%> --retries=<%{retries}%> \\\\
+  CMD curl -f http://localhost:<%{port}%><%{path}%> || exit 1
+<%/path%>
+<%/healthCheck%>
+
+USER appuser
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 `;
 
 const dockerComposeTemplate = `version: '3.9'
@@ -808,29 +847,41 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     outputPath: 'docker-compose.yml',
   },
   'dockerfile-node': {
-    description: 'Multi-stage Dockerfile for Node.js services (builder + runtime slims).',
-    category: 'docker',
-    perService: true,
-    outputPath: 'services/<name>/Dockerfile',
-  },
-  'dockerfile-python': {
-    description: 'Multi-stage Dockerfile for Python services (builder + runtime slims).',
-    category: 'docker',
-    perService: true,
-    outputPath: 'services/<name>/Dockerfile',
-  },
-  'k8s-deployment': {
-    description: 'Kubernetes Deployment with probes, resource limits, and env from spec.',
-    category: 'kubernetes',
-    perService: true,
-    outputPath: 'k8s/services/<name>/deployment.yaml',
-  },
-  'k8s-service': {
-    description: 'Kubernetes Service (ClusterIP) exposing the service port.',
-    category: 'kubernetes',
-    perService: true,
-    outputPath: 'k8s/services/<name>/service.yaml',
-  },
+      description: 'Multi-stage Dockerfile for Node.js services (builder + runtime slims).',
+      category: 'docker',
+      perService: true,
+      outputPath: 'services/<name>/Dockerfile',
+    },
+    'dockerfile-python': {
+      description: 'Multi-stage Dockerfile for Python services (builder + runtime slims).',
+      category: 'docker',
+      perService: true,
+      outputPath: 'services/<name>/Dockerfile',
+    },
+    'dockerfile-go': {
+      description: 'Multi-stage Dockerfile for Go services (builder + runtime Alpine).',
+      category: 'docker',
+      perService: true,
+      outputPath: 'services/<name>/Dockerfile',
+    },
+    'dockerfile-rust': {
+      description: 'Multi-stage Dockerfile for Rust services (cargo-chef for dependency caching).',
+      category: 'docker',
+      perService: true,
+      outputPath: 'services/<name>/Dockerfile',
+    },
+    'dockerfile-java': {
+      description: 'Multi-stage Dockerfile for Java services (Maven builder + Eclipse Temurin runtime).',
+      category: 'docker',
+      perService: true,
+      outputPath: 'services/<name>/Dockerfile',
+    },
+    'docker-swarm': {
+      description: 'Docker Swarm stack with deploy configs, healthchecks, and overlay networking.',
+      category: 'docker',
+      perService: false,
+      outputPath: 'docker-compose.swarm.yml',
+    },
   'k8s-hpa': {
     description: 'HorizontalPodAutoscaler with CPU + optional memory utilization.',
     category: 'kubernetes',
@@ -965,6 +1016,12 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
   },
   'dockerfile-rust': {
     description: 'Multi-stage Dockerfile for Rust services (cargo-chef for dependency caching).',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/Dockerfile',
+  },
+  'dockerfile-java': {
+    description: 'Multi-stage Dockerfile for Java services (Maven builder + Eclipse Temurin runtime).',
     category: 'docker',
     perService: true,
     outputPath: 'services/<name>/Dockerfile',
@@ -1126,7 +1183,76 @@ export function validateAllTemplates(
   }
   return results;
 }
-// PodDisruptionBudget (k8s-pdb)
+// Docker Swarm stack template
+const dockerSwarmTemplate = `version: '3.9'
+
+services:
+<%#services%>
+  <%name%>:
+    image: <%project.github.owner%>/<%project.name%>-<%name%>:latest
+    ports:
+      - "<%port%>:<%port%>"
+    environment:
+      - NODE_ENV=production
+      - PORT=<%port%>
+<%#env%>
+<%#.%>
+      - <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+<%#healthCheck%>
+<%#healthCheck.path%>
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:<%port%><%{healthCheck.path}%>"]
+      interval: "<%healthCheck.interval%>"
+      timeout: "<%healthCheck.timeout%>"
+      retries: <%healthCheck.retries%>
+<%/healthCheck.path%>
+<%/healthCheck%>
+    deploy:
+      replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    networks:
+      - devforge-network
+<%/services%>
+<%#databases%>
+  <%name%>:
+    image: <%{type}%>:<%{version}%>
+    environment:
+<%#.%>
+    - <%/.%>
+<%#size%>
+      - POSTGRES_SIZE=<%size%>
+<%/size%>
+    ports:
+      - "<%port%>:<%port%>"
+    volumes:
+      - <%name%>-data:/var/lib/<%type%>
+    networks:
+      - devforge-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+<%/databases%>
+
+networks:
+  devforge-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+<%#databases%>
+  <%name%>-data:
+<%/databases%>
+`;
 const k8sPDBTemplate = `apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -1908,4 +2034,5 @@ export const templates = {
   'cloudflare-workers': cloudflareWorkersTemplate,
   'opentelemetry-node': opentelemetryNodeTemplate,
   'opentelemetry-python': opentelemetryPythonTemplate,
+  'dockerfile-java': dockerfileJava,
 };

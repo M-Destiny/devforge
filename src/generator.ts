@@ -62,6 +62,26 @@ export class ProjectGenerator {
     return '3.12'.split('.')[0];
   }
 
+  private getGoVersion(): string {
+    return '1.22';
+  }
+
+  private getAlpineVersion(): string {
+    return '3.20';
+  }
+
+  private getRustVersion(): string {
+    return '1.79';
+  }
+
+  private getDebianVersion(): string {
+    return '12';
+  }
+
+  private getJavaVersion(): string {
+    return '21-slim';
+  }
+
   private async ensureDir(path: string): Promise<void> {
     if (this.options.dryRun) return;
     try {
@@ -327,13 +347,39 @@ export class ProjectGenerator {
     await this.ensureDir(join(serviceDir, 'src'));
 
     // Generate Dockerfile
-    const dockerfileTemplate = service.language === 'node' ? 'dockerfile-node' : 'dockerfile-python';
+    let dockerfileTemplate: string;
     const dockerfileContext = {
       ...this.buildContext(service),
       nodeVersion: this.getNodeVersion(),
       pythonVersion: this.getPythonVersion(),
       pythonMajor: this.getPythonMajor(),
+      goVersion: this.getGoVersion(),
+      alpineVersion: this.getAlpineVersion(),
+      rustVersion: this.getRustVersion(),
+      debianVersion: this.getDebianVersion(),
+      javaVersion: this.getJavaVersion(),
     };
+    
+    switch (service.language) {
+      case 'node':
+        dockerfileTemplate = 'dockerfile-node';
+        break;
+      case 'python':
+        dockerfileTemplate = 'dockerfile-python';
+        break;
+      case 'go':
+        dockerfileTemplate = 'dockerfile-go';
+        break;
+      case 'rust':
+        dockerfileTemplate = 'dockerfile-rust';
+        break;
+      case 'java':
+        dockerfileTemplate = 'dockerfile-java';
+        break;
+      default:
+        dockerfileTemplate = 'dockerfile-node';
+    }
+    
     const dockerfileContent = renderTemplate(dockerfileTemplate, dockerfileContext);
     await this.writeRenderedFile(join(serviceDir, 'Dockerfile'), dockerfileContent);
 
