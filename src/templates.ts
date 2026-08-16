@@ -1086,6 +1086,24 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     perService: true,
     outputPath: 'services/<name>/README.md',
   },
+  'opentelemetry-go': {
+    description: 'OpenTelemetry Go instrumentation setup with OTLP HTTP exporter.',
+    category: 'observability',
+    perService: true,
+    outputPath: 'services/<name>/otel.go',
+  },
+  'opentelemetry-rust': {
+    description: 'OpenTelemetry Rust instrumentation setup with OTLP HTTP exporter.',
+    category: 'observability',
+    perService: true,
+    outputPath: 'services/<name>/src/otel.rs',
+  },
+  'opentelemetry-java': {
+    description: 'OpenTelemetry Java instrumentation setup with OTLP gRPC exporter.',
+    category: 'observability',
+    perService: true,
+    outputPath: 'services/<name>/src/main/java/otel/OpenTelemetryConfig.java',
+  },
 };
 
 export function listTemplates(): string[] {
