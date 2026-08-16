@@ -261,8 +261,19 @@ program
   .description('Interactively scaffold a new project')
   .argument('<name>', 'Project name')
   .action(async (name: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const prompts = (await import('prompts')) as any;
+    // `prompts` ships its own types — use them properly instead of casting
+    // to `any` and disabling the eslint rule. The runtime API is `default
+    // export`, which TypeScript needs when esModuleInterop is on.
+    const promptsModule = await import('prompts');
+    const prompts = (promptsModule.default ?? promptsModule) as (
+      questions: Array<{
+        type: 'text' | 'list';
+        name: string;
+        message: string;
+        initial: string;
+      }>,
+      options?: { onCancel?: () => void }
+    ) => Promise<Record<string, string>>;
     const questions: Array<{
       type: 'text' | 'list';
       name: string;
@@ -309,7 +320,13 @@ program
       scaling: { minReplicas: 1, maxReplicas: 5, targetCPUUtilization: 70 },
     }));
 
-    const databases: any[] = [];
+    const databases: Array<{
+      name: string;
+      type: string;
+      version: string;
+      port: number;
+      size: string;
+    }> = [];
     if (dbTypes.length > 0) {
       dbTypes.forEach((dbType: string, idx: number) => {
         databases.push({
