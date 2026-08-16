@@ -2378,9 +2378,8 @@ docker build -t <%service.name%>-go -f Dockerfile.go ./services/<%service.name%>
 # Run
 docker run -p <%service.port%>:<%service.port%> <%service.name%>
 \`\`\`
-`;
-
-export const templates = {
+`;\n
+// Docker Swarm stack\nconst dockerSwarmTemplate = `version: '3.9'\n\nservices:\n<%#services%>\n  <%name%>:\n    build:\n      context: ./services/<%name%>\n      dockerfile: Dockerfile\n    image: <%project.github.owner%>/<%project.name%>-<%name%>:latest\n    deploy:\n      replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>\n      resources:\n        limits:\n          cpus: '0.5'\n          memory: 512M\n        reservations:\n          cpus: '0.1'\n          memory: 128M\n      restart_policy:\n        condition: on-failure\n        delay: 5s\n        max_attempts: 3\n      update_config:\n        parallelism: 1\n        delay: 10s\n        order: start-first\n      placement:\n        constraints:\n          - node.role == worker\n    ports:\n      - target: <%port%>\n        published: <%port%>\n        protocol: tcp\n        mode: ingress\n    environment:\n      - NODE_ENV=production\n      - PORT=<%port%>\n<%#dependencies%>\n      - SERVICE_DEPENDENCIES=<%#.%>\n<%{this}%>\n<%/.%>\n<%/dependencies%>\n<%#env%>\n<%#.%>\n      - <%{key}%>=<%{value}%>\n<%/.%>\n<%/env%>\n<%#healthCheck%>\n<%#healthCheck.path%>\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:<%port%><%{healthCheck.path}%>\"]\n      interval: \"<%healthCheck.interval%>\"\n      timeout: \"<%healthCheck.timeout%>\"\n      retries: <%healthCheck.retries%>\n<%/healthCheck.path%>\n<%/healthCheck%>\n    networks:\n      - devforge-network\n<%/services%>\n<%#databases%>\n  <%name%>:\n    image: <%{type}%>:<%{version}%>\n    deploy:\n      replicas: 1\n      restart_policy:\n        condition: on-failure\n      placement:\n        constraints:\n          - node.role == manager\n    environment:\n<%#.%>\n    <%/.%>\n<%#size%>\n      - POSTGRES_SIZE=<%size%>\n<%/size%>\n    ports:\n      - target: <%port%>\n        published: <%port%>\n        protocol: tcp\n    volumes:\n      - <%name%>-data:/var/lib/<%type%>\n    networks:\n      - devforge-network\n<%/databases%>\nvolumes:\n<%#databases%>\n  <%name%>-data:\n<%/databases%>\n\nnetworks:\n  devforge-network:\n    driver: overlay\n    attachable: true\n`;\n\nexport const templates = {
   'docker-compose': dockerComposeTemplate,
   'k8s-deployment': k8sDeploymentTemplate,
   'k8s-service': k8sServiceTemplate,
@@ -2417,6 +2416,7 @@ export const templates = {
   'opentelemetry-node': opentelemetryNodeTemplate,
   'opentelemetry-python': opentelemetryPythonTemplate,
   'dockerfile-java': dockerfileJava,
+  'docker-swarm': dockerSwarmTemplate,
   'grpc-proto': grpcProtoTemplate,
   'grpc-node-service': grpcNodeServiceTemplate,
   'grpc-go-service': grpcGoServiceTemplate,

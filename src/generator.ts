@@ -498,7 +498,6 @@ export class ProjectGenerator {
         );
       }
     }
-  }
 
   private async generateDatabaseFiles(): Promise<void> {
     const dbDir = join(this.outputDir, 'k8s', 'databases');
