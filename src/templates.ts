@@ -569,7 +569,9 @@ jobs:
       matrix:
         service:
 <%#services%>
-          - <%{name}%>
+          - name: <%{name}%>
+            language: <%{language}%>
+            port: <%{port}%>
 <%/services%>
 
     steps:
@@ -586,9 +588,12 @@ jobs:
           username: \${{ github.actor }}
           password: \${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract service name
+      - name: Extract service metadata
         id: vars
-        run: echo "SERVICE_NAME=\${{ matrix.service }}" >> $GITHUB_OUTPUT
+        run: |
+          echo "SERVICE_NAME=\${{ matrix.service.name }}" >> $GITHUB_OUTPUT
+          echo "SERVICE_LANGUAGE=\\${{ matrix.service.language }}" >> $GITHUB_OUTPUT
+          echo "SERVICE_PORT=\\${{ matrix.service.port }}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -601,11 +606,75 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Run tests
+      - name: Set up Node.js
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: services/\${{ steps.vars.outputs.SERVICE_NAME }}/package-lock.json
+
+      - name: Set up Python
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: services/\${{ steps.vars.outputs.SERVICE_NAME }}/requirements.txt
+
+      - name: Set up Go
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: services/\${{ steps.vars.outputs.SERVICE_NAME }}/go.sum
+
+      - name: Set up Rust
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          cache-dependency-path: services/\${{ steps.vars.outputs.SERVICE_NAME }}/Cargo.lock
+
+      - name: Set up Java
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+          cache-dependency-path: services/\${{ steps.vars.outputs.SERVICE_NAME }}/pom.xml
+
+      - name: Run tests (Node.js)
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'node'
         run: |
           cd services/\${{ steps.vars.outputs.SERVICE_NAME }}
           npm ci
           npm test
+
+      - name: Run tests (Python)
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'python'
+        run: |
+          cd services/\${{ steps.vars.outputs.SERVICE_NAME }}
+          pip install -r requirements.txt
+          python -m pytest
+
+      - name: Run tests (Go)
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'go'
+        run: |
+          cd services/\${{ steps.vars.outputs.SERVICE_NAME }}
+          go test ./...
+
+      - name: Run tests (Rust)
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'rust'
+        run: |
+          cd services/\${{ steps.vars.outputs.SERVICE_NAME }}
+          cargo test
+
+      - name: Run tests (Java)
+        if: steps.vars.outputs.SERVICE_LANGUAGE == 'java'
+        run: |
+          cd services/\${{ steps.vars.outputs.SERVICE_NAME }}
+          mvn test
 
   deploy:
     needs: build
@@ -627,11 +696,11 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
 <%#services%>
-          kubectl apply -f k8s/{{{"{{"}}}/services/<%{name}%>/deployment.yaml
-          kubectl apply -f k8s/{{{"{{"}}}/services/<%{name}%>/service.yaml
+          kubectl apply -f k8s/{{{\"{{\"}}}/services/<%{name}%>/deployment.yaml
+          kubectl apply -f k8s/{{{\"{{\"}}}/services/<%{name}%>/service.yaml
 <%/services%>
 <%#databases%>
-          kubectl apply -f k8s/{{{"{{"}}}/databases/<%{name}%>.yaml
+          kubectl apply -f k8s/{{{\"{{\"}}}/databases/<%{name}%>.yaml
 <%/databases%>
           kubectl apply -f k8s/ingress.yaml
           kubectl rollout status deployment -n <%project.namespace%>
