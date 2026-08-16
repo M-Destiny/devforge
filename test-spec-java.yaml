@@ -29,6 +29,20 @@ services:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilization: 70
+  - name: user-service
+    language: java
+    protocol: http
+    port: 8081
+    dependencies: [auth-service]
+    healthCheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    scaling:
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilization: 70
 databases:
   - name: postgres
     type: postgres

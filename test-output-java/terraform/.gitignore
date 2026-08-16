@@ -1,0 +1,19 @@
+# Local Terraform state
+.terraform/
+.terraform.lock.hcl
+
+# State files (use remote backend; never commit)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variable files containing secrets
+*.tfvars
+!example.tfvars
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

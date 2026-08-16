@@ -497,6 +497,20 @@ export class ProjectGenerator {
           'fastapi==0.109.0\\nuvicorn==0.27.0\\npydantic==2.5.0\\n'
         );
       }
+
+      // Generate OpenTelemetry instrumentation for supported languages
+      if (service.language === 'go') {
+        const otelContent = renderTemplate('opentelemetry-go', this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'otel.go'), otelContent);
+      } else if (service.language === 'rust') {
+        const otelContent = renderTemplate('opentelemetry-rust', this.buildContext(service));
+        await this.ensureDir(join(serviceDir, 'src'));
+        await this.writeRenderedFile(join(serviceDir, 'src', 'otel.rs'), otelContent);
+      } else if (service.language === 'java') {
+        const otelContent = renderTemplate('opentelemetry-java', this.buildContext(service));
+        await this.ensureDir(join(serviceDir, 'src', 'main', 'java', 'otel'));
+        await this.writeRenderedFile(join(serviceDir, 'src', 'main', 'java', 'otel', 'OpenTelemetryConfig.java'), otelContent);
+      }
     }
 
   private async generateDatabaseFiles(): Promise<void> {

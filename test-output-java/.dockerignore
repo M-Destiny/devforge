@@ -1,0 +1,33 @@
+# Dev / build artifacts
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git / CI
+.git/
+.gitignore
+.github/
+
+# Project-specific generated files
+output/
+devforge-output/
+k8s/
+docker-compose.yml
+nginx.conf
+*.log
+
+# Tests / fixtures
+tests/fixtures/
+*.test.*

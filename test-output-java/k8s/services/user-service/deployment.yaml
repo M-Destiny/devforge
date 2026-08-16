@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: production
+  labels:
+    app: user-service
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/managed-by: devforge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        app.kubernetes.io/name: user-service
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: user-service
+          image: docker.io/acme/test-platform-user-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 9464
+              protocol: TCP
+          env:
+            - name: SERVICE_DEPENDENCIES
+              value: "
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
