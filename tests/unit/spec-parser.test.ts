@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSpec, validateSpec } from '../../src/spec-parser.js';
+import { parseSpec, validateSpec, validateKubernetesName } from '../../src/spec-parser.js';
 
 describe('parseSpec', () => {
   it('parses valid YAML spec', () => {

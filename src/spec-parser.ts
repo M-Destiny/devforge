@@ -84,8 +84,53 @@ export function parseSpec(yamlContent: string): ProjectSpec {
   return result.data as ProjectSpec;
 }
 
+/**
+ * Validates a string against the Kubernetes DNS-1123 label rules that apply
+ * to most resource names (Deployment, Service, ConfigMap, Ingress, etc.).
+ *
+ *   - max 63 characters
+ *   - lowercase alphanumeric and `-`
+ *   - must start and end with an alphanumeric character
+ *
+ * We deliberately reject names that pass the Zod `.min(1)` check but will
+ * cause `kubectl apply` to reject the generated manifest — catching the
+ * problem at validation time is much friendlier than debugging it after a
+ * failed rollout.
+ */
+export function validateKubernetesName(
+  value: string,
+  kind: string
+): string | null {
+  if (value.length === 0) return `${kind} name must not be empty`;
+  if (value.length > 63) return `${kind} name "${value}" is ${value.length} chars; Kubernetes DNS-1123 labels allow at most 63`;
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(value)) {
+    return `${kind} name "${value}" is not a valid Kubernetes DNS-1123 label (use lowercase letters, digits, and '-' only; must start and end with a letter or digit)`;
+  }
+  return null;
+}
+
 export function validateSpec(spec: ProjectSpec): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
+
+  // Validate Kubernetes-safe names for every resource that ends up in a
+  // `metadata.name` field. Without this, `devforge init` happily produces
+  // manifests that `kubectl apply` refuses to accept.
+  const projectNameErr = validateKubernetesName(spec.name, 'Project');
+  if (projectNameErr) errors.push(projectNameErr);
+  const namespaceErr = validateKubernetesName(spec.namespace, 'Namespace');
+  if (namespaceErr) errors.push(namespaceErr);
+
+  for (const service of spec.services) {
+    const err = validateKubernetesName(service.name, `Service "${service.name}"`);
+    if (err) errors.push(err);
+  }
+
+  if (spec.databases) {
+    for (const db of spec.databases) {
+      const err = validateKubernetesName(db.name, `Database "${db.name}"`);
+      if (err) errors.push(err);
+    }
+  }
 
   // Check port conflicts
   const ports = new Map<number, string>();
