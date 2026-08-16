@@ -9,8 +9,9 @@ import {
   getTemplateMetadata,
   getTemplatePlaceholders,
   renderTemplate,
+  validateAllTemplates,
 } from './templates.js';
-import type { ProjectSpec, ServiceSpec, DatabaseSpec } from './types.js';
+import type { ProjectSpec, ServiceSpec, DatabaseSpec, TemplateContext } from './types.js';
 
 /**
  * Renders a template with a minimal but representative stub ProjectSpec so
