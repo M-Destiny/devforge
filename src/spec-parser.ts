@@ -132,6 +132,39 @@ export function validateSpec(spec: ProjectSpec): { valid: boolean; errors: strin
     }
   }
 
+  // Catch duplicate service names. Two services with the same name produce
+  // identical k8s label selectors (`app: <name>`), so a Service for the
+  // second one would silently route to the first one's pods. The Zod schema
+  // allows duplicates; we have to detect them ourselves.
+  const serviceNames = new Set<string>();
+  for (const service of spec.services) {
+    if (serviceNames.has(service.name)) {
+      errors.push(`Duplicate service name "${service.name}" — service names must be unique (they become k8s label selectors)`);
+    }
+    serviceNames.add(service.name);
+  }
+
+  // Catch duplicate database names for the same reason: a Deployment, PVC,
+  // and Service are all emitted under the database name.
+  if (spec.databases) {
+    const dbNames = new Set<string>();
+    for (const db of spec.databases) {
+      if (dbNames.has(db.name)) {
+        errors.push(`Duplicate database name "${db.name}" — database names must be unique`);
+      }
+      dbNames.add(db.name);
+    }
+
+    // Cross-namespace collisions: a service and database sharing a name will
+    // collide on the `app:` label selector that NetworkPolicy, Prometheus
+    // relabel_configs, and the HPA scaleTargetRef all use.
+    for (const db of spec.databases) {
+      if (serviceNames.has(db.name)) {
+        errors.push(`Name "${db.name}" is used by both a service and a database — these would collide on the "app:" label selector in NetworkPolicy / Prometheus scrape configs`);
+      }
+    }
+  }
+
   // Check port conflicts
   const ports = new Map<number, string>();
   for (const service of spec.services) {
@@ -151,9 +184,6 @@ export function validateSpec(spec: ProjectSpec): { valid: boolean; errors: strin
       if (db.port) ports.set(db.port, `db:${db.name}`);
     }
   }
-
-  // Check service dependencies exist
-  const serviceNames = new Set(spec.services.map(s => s.name));
   for (const service of spec.services) {
     if (service.dependencies) {
       for (const dep of service.dependencies) {
