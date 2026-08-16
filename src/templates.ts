@@ -1988,6 +1988,144 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("<%service.name%>")
 `;
 
+const opentelemetryGoTemplate = `// OpenTelemetry Go instrumentation for <%service.name%>
+package main
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+)
+
+func initTracer() (*sdktrace.TracerProvider, error) {
+	ctx := context.Background()
+	exporter, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpoint("localhost:4318"),
+		otlptracehttp.WithInsecure(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName("<%service.name%>"),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	return tp, nil
+}
+
+func main() {
+	tp, err := initTracer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			log.Printf("Error shutting down tracer provider: %v", err)
+		}
+	}()
+
+	// Your service code here
+	_ = otel.Tracer("<%service.name%>")
+}
+`;
+
+const opentelemetryRustTemplate = `// OpenTelemetry Rust instrumentation for <%service.name%>
+use opentelemetry::{global, trace::TracerProvider as _};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{trace::TracerProvider, Resource};
+use std::time::Duration;
+
+fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let exporter = opentelemetry_otlp::new_exporter()
+        .http()
+        .with_endpoint("http://localhost:4318/v1/traces")
+        .with_timeout(Duration::from_secs(30));
+
+    let provider = TracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(
+            Resource::builder()
+                .with_service_name("<%service.name%>")
+                .build(),
+        )
+        .build();
+
+    global::set_tracer_provider(provider.clone());
+    Ok(provider)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    let provider = init_tracer()?;
+
+    // Your service code here
+    let _tracer = global::tracer("<%service.name%>");
+
+    // Shutdown
+    provider.shutdown()?;
+    Ok(())
+}
+`;
+
+const opentelemetryJavaTemplate = `// OpenTelemetry Java instrumentation for <%service.name%>
+package com.<%project.github.owner%>.<%project.name%>.<%service.name%>;
+
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
+
+public class OpenTelemetryConfig {
+    public static OpenTelemetry initOpenTelemetry() {
+        OtlpGrpcSpanExporter exporter = OtlpGrpcSpanExporter.builder()
+            .setEndpoint("http://localhost:4317")
+            .build();
+
+        SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
+            .setResource(Resource.getDefault().toBuilder()
+                .put(ResourceAttributes.SERVICE_NAME, "<%service.name%>")
+                .build())
+            .build();
+
+        OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
+            .setTracerProvider(tracerProvider)
+            .buildAndRegisterGlobal();
+
+        return openTelemetry;
+    }
+    
+    public static void main(String[] args) {
+        OpenTelemetry openTelemetry = initOpenTelemetry();
+        Tracer tracer = openTelemetry.getTracer("<%service.name%>");
+        // Your service code here
+    }
+}
+`;
+
 // gRPC service templates
 
 const grpcProtoTemplate = `syntax = "proto3";
