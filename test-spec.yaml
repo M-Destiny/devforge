@@ -1,0 +1,48 @@
+name: test-platform
+namespace: production
+services:
+  - name: api-gateway
+    language: go
+    protocol: http
+    port: 8080
+    dependencies: [auth-service]
+    healthCheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    scaling:
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilization: 70
+  - name: auth-service
+    language: rust
+    protocol: http
+    port: 3001
+    dependencies: [postgres]
+    healthCheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    scaling:
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilization: 70
+databases:
+  - name: postgres
+    type: postgres
+    version: '15'
+    size: 10Gi
+    port: 5432
+ingress:
+  enabled: true
+  rules:
+    - host: api.example.com
+      path: /
+      service: api-gateway
+      servicePort: 8080
+github:
+  owner: acme
+  repo: test-platform
+  branch: main
