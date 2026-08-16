@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { readFile } from 'fs/promises';
+import prompts from 'prompts';
 import { parseSpec, validateSpec } from './spec-parser.js';
 import { ProjectGenerator } from './generator.js';
 import {
@@ -261,10 +262,6 @@ program
   .description('Interactively scaffold a new project')
   .argument('<name>', 'Project name')
   .action(async (name: string) => {
-    // `prompts` uses `export = prompts` (CJS) which TS resolves to a
-    // callable namespace. With `esModuleInterop`, the default import gives
-    // us the callable directly without `any` casts.
-    import prompts from 'prompts';
     const questions: Array<{
       type: 'text' | 'list';
       name: string;
@@ -311,19 +308,20 @@ program
       scaling: { minReplicas: 1, maxReplicas: 5, targetCPUUtilization: 70 },
     }));
 
-    const databases: Array<{
-      name: string;
-      type: string;
-      version: string;
-      port: number;
-      size: string;
-    }> = [];
+    const databases: DatabaseSpec[] = [];
     if (dbTypes.length > 0) {
       dbTypes.forEach((dbType: string, idx: number) => {
+        // Narrow the user-entered string to the DatabaseSpec.type union.
+        // Any unknown type becomes 'postgres' (the most common default)
+        // instead of leaking a wider `string` into the typed spec.
+        const allowedTypes = ['postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch'] as const;
+        const narrowType = (allowedTypes as readonly string[]).includes(dbType)
+          ? (dbType as DatabaseSpec['type'])
+          : ('postgres' as const);
         databases.push({
           name: dbType,
-          type: dbType,
-          version: dbType === 'postgres' ? '15' : 'latest',
+          type: narrowType,
+          version: narrowType === 'postgres' ? '15' : 'latest',
           port: 5432 + idx,
           size: '1Gi',
         });
