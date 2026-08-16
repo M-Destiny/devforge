@@ -2378,8 +2378,104 @@ docker build -t <%service.name%>-go -f Dockerfile.go ./services/<%service.name%>
 # Run
 docker run -p <%service.port%>:<%service.port%> <%service.name%>
 \`\`\`
-`;\n
-// Docker Swarm stack\nconst dockerSwarmTemplate = `version: '3.9'\n\nservices:\n<%#services%>\n  <%name%>:\n    build:\n      context: ./services/<%name%>\n      dockerfile: Dockerfile\n    image: <%project.github.owner%>/<%project.name%>-<%name%>:latest\n    deploy:\n      replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>\n      resources:\n        limits:\n          cpus: '0.5'\n          memory: 512M\n        reservations:\n          cpus: '0.1'\n          memory: 128M\n      restart_policy:\n        condition: on-failure\n        delay: 5s\n        max_attempts: 3\n      update_config:\n        parallelism: 1\n        delay: 10s\n        order: start-first\n      placement:\n        constraints:\n          - node.role == worker\n    ports:\n      - target: <%port%>\n        published: <%port%>\n        protocol: tcp\n        mode: ingress\n    environment:\n      - NODE_ENV=production\n      - PORT=<%port%>\n<%#dependencies%>\n      - SERVICE_DEPENDENCIES=<%#.%>\n<%{this}%>\n<%/.%>\n<%/dependencies%>\n<%#env%>\n<%#.%>\n      - <%{key}%>=<%{value}%>\n<%/.%>\n<%/env%>\n<%#healthCheck%>\n<%#healthCheck.path%>\n    healthcheck:\n      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:<%port%><%{healthCheck.path}%>\"]\n      interval: \"<%healthCheck.interval%>\"\n      timeout: \"<%healthCheck.timeout%>\"\n      retries: <%healthCheck.retries%>\n<%/healthCheck.path%>\n<%/healthCheck%>\n    networks:\n      - devforge-network\n<%/services%>\n<%#databases%>\n  <%name%>:\n    image: <%{type}%>:<%{version}%>\n    deploy:\n      replicas: 1\n      restart_policy:\n        condition: on-failure\n      placement:\n        constraints:\n          - node.role == manager\n    environment:\n<%#.%>\n    <%/.%>\n<%#size%>\n      - POSTGRES_SIZE=<%size%>\n<%/size%>\n    ports:\n      - target: <%port%>\n        published: <%port%>\n        protocol: tcp\n    volumes:\n      - <%name%>-data:/var/lib/<%type%>\n    networks:\n      - devforge-network\n<%/databases%>\nvolumes:\n<%#databases%>\n  <%name%>-data:\n<%/databases%>\n\nnetworks:\n  devforge-network:\n    driver: overlay\n    attachable: true\n`;\n\nexport const templates = {
+`;
+// Docker Swarm stack
+const dockerSwarmTemplate = `version: '3.9'
+
+services:
+<%#services%>
+  <%name%>:
+    build:
+      context: ./services/<%name%>
+      dockerfile: Dockerfile
+    image: <%project.github.owner%>/<%project.name%>-<%name%>:latest
+    deploy:
+      replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      placement:
+        constraints:
+          - node.role == worker
+    ports:
+      - target: <%port%>
+        published: <%port%>
+        protocol: tcp
+        mode: ingress
+    environment:
+      - NODE_ENV=production
+      - PORT=<%port%>
+<%#dependencies%>
+      - SERVICE_DEPENDENCIES=<%#.%>
+<%{this}%>
+<%/.%>
+<%/dependencies%>
+<%#env%>
+<%#.%>
+      - <%{key}%>=<%{value}%>
+<%/.%>
+<%/env%>
+<%#healthCheck%>
+<%#healthCheck.path%>
+    healthcheck:
+      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:<%port%><%{healthCheck.path}%>\"]
+      interval: \"<%healthCheck.interval%>\"
+      timeout: \"<%healthCheck.timeout%>\"
+      retries: <%healthCheck.retries%>
+<%/healthCheck.path%>
+<%/healthCheck%>
+    networks:
+      - devforge-network
+<%/services%>
+<%#databases%>
+  <%name%>:
+    image: <%{type}%>:<%{version}%>
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.role == manager
+    environment:
+<%#.%>
+    <%/.%>
+<%#size%>
+      - POSTGRES_SIZE=<%size%>
+<%/size%>
+    ports:
+      - target: <%port%>
+        published: <%port%>
+        protocol: tcp
+    volumes:
+      - <%name%>-data:/var/lib/<%type%>
+    networks:
+      - devforge-network
+<%/databases%>
+volumes:
+<%#databases%>
+  <%name%>-data:
+<%/databases%>
+
+networks:
+  devforge-network:
+    driver: overlay
+    attachable: true
+`;
+
+export const templates = {
   'docker-compose': dockerComposeTemplate,
   'k8s-deployment': k8sDeploymentTemplate,
   'k8s-service': k8sServiceTemplate,
