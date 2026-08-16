@@ -261,19 +261,10 @@ program
   .description('Interactively scaffold a new project')
   .argument('<name>', 'Project name')
   .action(async (name: string) => {
-    // `prompts` ships its own types — use them properly instead of casting
-    // to `any` and disabling the eslint rule. The runtime API is `default
-    // export`, which TypeScript needs when esModuleInterop is on.
-    const promptsModule = await import('prompts');
-    const prompts = (promptsModule.default ?? promptsModule) as (
-      questions: Array<{
-        type: 'text' | 'list';
-        name: string;
-        message: string;
-        initial: string;
-      }>,
-      options?: { onCancel?: () => void }
-    ) => Promise<Record<string, string>>;
+    // `prompts` uses `export = prompts` (CJS) which TS resolves to a
+    // callable namespace. With `esModuleInterop`, the default import gives
+    // us the callable directly without `any` casts.
+    import prompts from 'prompts';
     const questions: Array<{
       type: 'text' | 'list';
       name: string;
