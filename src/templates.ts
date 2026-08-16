@@ -882,6 +882,18 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
       perService: false,
       outputPath: 'docker-compose.swarm.yml',
     },
+  'k8s-deployment': {
+    description: 'Kubernetes Deployment with resource limits, health probes, and autoscaling annotations.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/deployment.yaml',
+  },
+  'k8s-service': {
+    description: 'Kubernetes ClusterIP Service for a single service.',
+    category: 'kubernetes',
+    perService: true,
+    outputPath: 'k8s/services/<name>/service.yaml',
+  },
   'k8s-hpa': {
     description: 'HorizontalPodAutoscaler with CPU + optional memory utilization.',
     category: 'kubernetes',
@@ -1165,76 +1177,6 @@ export function validateAllTemplates(
   }
   return results;
 }
-// Docker Swarm stack template
-const dockerSwarmTemplate = `version: '3.9'
-
-services:
-<%#services%>
-  <%name%>:
-    image: <%project.github.owner%>/<%project.name%>-<%name%>:latest
-    ports:
-      - "<%port%>:<%port%>"
-    environment:
-      - NODE_ENV=production
-      - PORT=<%port%>
-<%#env%>
-<%#.%>
-      - <%{key}%>=<%{value}%>
-<%/.%>
-<%/env%>
-<%#healthCheck%>
-<%#healthCheck.path%>
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:<%port%><%{healthCheck.path}%>"]
-      interval: "<%healthCheck.interval%>"
-      timeout: "<%healthCheck.timeout%>"
-      retries: <%healthCheck.retries%>
-<%/healthCheck.path%>
-<%/healthCheck%>
-    deploy:
-      replicas: <%service.scaling.minReplicas%><%^service.scaling%>1<%/service.scaling%>
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
-    networks:
-      - devforge-network
-<%/services%>
-<%#databases%>
-  <%name%>:
-    image: <%{type}%>:<%{version}%>
-    environment:
-<%#.%>
-    - <%/.%>
-<%#size%>
-      - POSTGRES_SIZE=<%size%>
-<%/size%>
-    ports:
-      - "<%port%>:<%port%>"
-    volumes:
-      - <%name%>-data:/var/lib/<%type%>
-    networks:
-      - devforge-network
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-<%/databases%>
-
-networks:
-  devforge-network:
-    driver: overlay
-    attachable: true
-
-volumes:
-<%#databases%>
-  <%name%>-data:
-<%/databases%>
-`;
 const k8sPDBTemplate = `apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
