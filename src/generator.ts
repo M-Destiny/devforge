@@ -1,6 +1,7 @@
 import { writeFile, mkdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import * as Diff from 'diff';
+import { Task, tasks } from 'listr2';
 import type {
   ProjectSpec,
   ServiceSpec,
@@ -173,47 +174,97 @@ export class ProjectGenerator {
     try {
       await this.ensureDir(this.outputDir);
 
-      // Generate docker-compose.yml
-      await this.generateDockerCompose();
+      // Create progress tasks using listr2
+      const tasks = new Listr([
+        {
+          title: 'Generating docker-compose.yml',
+          task: async () => {
+            await this.generateDockerCompose();
+          },
+        },
+        {
+          title: 'Generating Makefile',
+          task: async () => {
+            await this.generateMakefile();
+          },
+        },
+        {
+          title: 'Generating per-service files',
+          task: async (_, task) => {
+            for (const service of this.spec.services) {
+              await this.generateServiceFiles(service);
+              task.title = `Generated service: ${service.name}`;
+            }
+          },
+        },
+        {
+          title: 'Generating database manifests',
+          task: async () => {
+            if (this.spec.databases) {
+              await this.generateDatabaseFiles();
+            }
+          },
+        },
+        {
+          title: 'Generating ingress',
+          task: async () => {
+            if (this.spec.ingress?.enabled) {
+              await this.generateIngress();
+            }
+          },
+        },
+        {
+          title: 'Generating GitHub Actions workflow',
+          task: async () => {
+            await this.generateGitHubActions();
+          },
+        },
+        {
+          title: 'Generating Prometheus ConfigMap',
+          task: async () => {
+            await this.generatePrometheusConfig();
+          },
+        },
+        {
+          title: 'Generating nginx config',
+          task: async () => {
+            await this.generateNginxConfig();
+          },
+        },
+        {
+          title: 'Generating .dockerignore',
+          task: async () => {
+            await this.generateDockerignore();
+          },
+        },
+        {
+          title: 'Generating k8s hardening (PDB + NetworkPolicy)',
+          task: async () => {
+            await this.generateK8sHardening();
+          },
+        },
+        {
+          title: 'Generating Grafana provisioning',
+          task: async () => {
+            await this.generateGrafana();
+          },
+        },
+        {
+          title: 'Generating Terraform (AWS EKS + RDS)',
+          task: async () => {
+            await this.generateTerraform();
+          },
+        },
+      ], {
+        concurrent: false,
+        rendererOptions: {
+          collapse: false,
+          collapseErrors: false,
+          clearOutput: false,
+        },
+      });
 
-      // Generate Makefile
-      await this.generateMakefile();
-
-      // Generate per-service files
-      for (const service of this.spec.services) {
-        await this.generateServiceFiles(service);
-      }
-
-      // Generate database files
-      if (this.spec.databases) {
-        await this.generateDatabaseFiles();
-      }
-
-      // Generate ingress
-      if (this.spec.ingress?.enabled) {
-        await this.generateIngress();
-      }
-
-      // Generate GitHub Actions
-      await this.generateGitHubActions();
-
-      // Generate Prometheus ConfigMap
-      await this.generatePrometheusConfig();
-
-      // Generate nginx config
-      await this.generateNginxConfig();
-
-      // Generate .dockerignore
-      await this.generateDockerignore();
-
-      // Generate k8s hardening (PDB + NetworkPolicy)
-      await this.generateK8sHardening();
-
-      // Generate Grafana provisioning (dashboard + datasource + provider)
-      await this.generateGrafana();
-
-      // Generate Terraform (AWS platform: VPC + EKS + RDS per database)
-      await this.generateTerraform();
+      await tasks.run();
 
       const success = this.errors.length === 0;
       return {

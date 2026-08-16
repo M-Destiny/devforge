@@ -34,6 +34,7 @@
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
     "handlebars": "^4.7.8",
+    "listr2": "^11.0.0",
     "minimatch": "^9.0.3",
     "mustache": "^4.2.0",
     "pino": "^8.18.0",
