@@ -694,17 +694,17 @@ jobs:
           echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
 
       - name: Deploy to Kubernetes
-        run: |
-<%#services%>
-          kubectl apply -f k8s/{{{\$\{"{{\"\}\}}}/services/<%{name}%>/deployment.yaml
-          kubectl apply -f k8s/{{{\$\{"{{\"\}\}}}/services/<%{name}%>/service.yaml
-<%/services%>
-<%#databases%>
-          kubectl apply -f k8s/{{{\$\{"{{\"\}\}}}/databases/<%{name}%>.yaml
-<%/databases%>
-          kubectl apply -f k8s/ingress.yaml
-          kubectl rollout status deployment -n <%project.namespace%>
-`;
+              run: |
+      <%#services%>
+                kubectl apply -f k8s/{{{"{{"}}}}/services/<%{name}%>/deployment.yaml
+                kubectl apply -f k8s/{{{"{{"}}}}/services/<%{name}%>/service.yaml
+      <%/services%>
+      <%#databases%>
+                kubectl apply -f k8s/{{{"{{"}}}}/databases/<%{name}%>.yaml
+      <%/databases%>
+                kubectl apply -f k8s/ingress.yaml
+                kubectl rollout status deployment -n <%project.namespace%>
+      `;
 
 const prometheusConfigMapTemplate = `apiVersion: v1
 kind: ConfigMap
