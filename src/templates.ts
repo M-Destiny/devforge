@@ -2812,6 +2812,51 @@ spec:
 `;
 
 // Docker Swarm stack
+// Per-service .dockerignore for optimized Docker builds
+const dockerignoreTemplate = `# Dev / build artifacts
+node_modules/
+dist/
+build/
+__pycache__/
+*.pyc
+*.pyo
+coverage/
+.nyc_output/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git / CI
+.git/
+.gitignore
+.github/
+
+# Language-specific
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage
+tests/
+*.test.*
+*.spec.*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+`;
+
 const dockerSwarmTemplate = `version: '3.9'
 
 services:
@@ -2952,6 +2997,7 @@ export const templates = {
   'argocd-application': argocdApplicationTemplate,
   'service-monitor': serviceMonitorTemplate,
   'keda-scaledobject': kedaScaledObjectTemplate,
+  'dockerignore': dockerignoreTemplate,
   'grpc-proto': grpcProtoTemplate,
   'grpc-node-service': grpcNodeServiceTemplate,
   'grpc-go-service': grpcGoServiceTemplate,
