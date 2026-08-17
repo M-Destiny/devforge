@@ -275,6 +275,36 @@ export class ProjectGenerator {
             await this.generateTerraform();
           },
         },
+        {
+          title: 'Generating platform configs (Vercel, Fly.io, Railway, Render, Cloudflare)',
+          task: async () => {
+            await this.generatePlatformConfigs();
+          },
+        },
+        {
+          title: 'Generating GitOps configs (ArgoCD, ServiceMonitors, KEDA)',
+          task: async () => {
+            await this.generateGitOpsConfigs();
+          },
+        },
+        {
+          title: 'Generating Docker Swarm stack',
+          task: async () => {
+            await this.generateDockerSwarm();
+          },
+        },
+        {
+          title: 'Generating OpenTelemetry Node.js instrumentation',
+          task: async () => {
+            await this.generateOpenTelemetryNode();
+          },
+        },
+        {
+          title: 'Generating Kubernetes Secrets',
+          task: async () => {
+            await this.generateK8sSecrets();
+          },
+        },
       ];
 
       const listr = new Listr(tasks, {
@@ -778,5 +808,138 @@ override.tf.json
 *_override.tf.json
 `;
     await this.writeRenderedFile(join(terraformDir, '.gitignore'), gitignore);
+  }
+
+  private async generatePlatformConfigs(): Promise<void> {
+    // Vercel config (for Next.js / frontend frameworks)
+    if (this.spec.framework) {
+      const vercelContext = this.buildContext(this.spec.services[0]);
+      await this.writeRenderedFile(
+        join(this.outputDir, 'vercel.json'),
+        renderTemplate('vercel', vercelContext)
+      );
+    }
+
+    // Fly.io config
+    if (this.spec.region) {
+      for (const service of this.spec.services) {
+        const flyContext = this.buildContext(service);
+        const flyDir = join(this.outputDir, 'services', service.name);
+        await this.ensureDir(flyDir);
+        await this.writeRenderedFile(
+          join(flyDir, 'fly.toml'),
+          renderTemplate('fly', flyContext)
+        );
+      }
+    }
+
+    // Railway config
+    if (this.spec.framework || this.spec.region) {
+      for (const service of this.spec.services) {
+        const railwayContext = this.buildContext(service);
+        const railwayDir = join(this.outputDir, 'services', service.name);
+        await this.ensureDir(railwayDir);
+        await this.writeRenderedFile(
+          join(railwayDir, 'railway.json'),
+          renderTemplate('railway', railwayContext)
+        );
+      }
+    }
+
+    // Render.com config
+    if (this.spec.framework) {
+      for (const service of this.spec.services) {
+        const renderContext = this.buildContext(service);
+        const renderDir = join(this.outputDir, 'services', service.name);
+        await this.ensureDir(renderDir);
+        await this.writeRenderedFile(
+          join(renderDir, 'render.yaml'),
+          renderTemplate('render', renderContext)
+        );
+      }
+    }
+
+    // Cloudflare Workers config
+    for (const service of this.spec.services) {
+      const cfContext = this.buildContext(service);
+      const cfDir = join(this.outputDir, 'services', service.name);
+      await this.ensureDir(cfDir);
+      await this.writeRenderedFile(
+        join(cfDir, 'wrangler.toml'),
+        renderTemplate('cloudflare-workers', cfContext)
+      );
+    }
+  }
+
+  private async generateGitOpsConfigs(): Promise<void> {
+    // ArgoCD Application
+    if (this.spec.github) {
+      const argocdContext = this.buildContext(this.spec.services[0]);
+      const argocdDir = join(this.outputDir, 'k8s', 'argocd');
+      await this.ensureDir(argocdDir);
+      await this.writeRenderedFile(
+        join(argocdDir, 'application.yaml'),
+        renderTemplate('argocd-application', argocdContext)
+      );
+    }
+
+    // ServiceMonitors for Prometheus Operator
+    for (const service of this.spec.services) {
+      const svcContext = this.buildContext(service);
+      const svcMonitorDir = join(this.outputDir, 'k8s', 'servicemonitors');
+      await this.ensureDir(svcMonitorDir);
+      await this.writeRenderedFile(
+        join(svcMonitorDir, `${service.name}.yaml`),
+        renderTemplate('service-monitor', svcContext)
+      );
+    }
+
+    // KEDA ScaledObjects for event-driven autoscaling
+    for (const service of this.spec.services) {
+      if (service.scaling) {
+        const kedaContext = this.buildContext(service);
+        const kedaDir = join(this.outputDir, 'k8s', 'keda');
+        await this.ensureDir(kedaDir);
+        await this.writeRenderedFile(
+          join(kedaDir, `${service.name}-scaledobject.yaml`),
+          renderTemplate('keda-scaledobject', kedaContext)
+        );
+      }
+    }
+  }
+
+  private async generateDockerSwarm(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    await this.writeRenderedFile(
+      join(this.outputDir, 'docker-compose.swarm.yml'),
+      renderTemplate('docker-swarm', context)
+    );
+  }
+
+  private async generateOpenTelemetryNode(): Promise<void> {
+    // Generate OpenTelemetry Node.js instrumentation for Node.js services
+    for (const service of this.spec.services) {
+      if (service.language === 'node') {
+        const otelContext = this.buildContext(service);
+        const serviceDir = join(this.outputDir, 'services', service.name, 'src');
+        await this.ensureDir(serviceDir);
+        await this.writeRenderedFile(
+          join(serviceDir, 'otel.ts'),
+          renderTemplate('opentelemetry-node', otelContext)
+        );
+      }
+    }
+  }
+
+  private async generateK8sSecrets(): Promise<void> {
+    for (const service of this.spec.services) {
+      const secretContext = this.buildContext(service);
+      const k8sDir = join(this.outputDir, 'k8s', 'services', service.name);
+      await this.ensureDir(k8sDir);
+      await this.writeRenderedFile(
+        join(k8sDir, 'secret.yaml'),
+        renderTemplate('k8s-secret', secretContext)
+      );
+    }
   }
 }
