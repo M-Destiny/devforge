@@ -536,6 +536,10 @@ export class ProjectGenerator {
         const otelContent = renderTemplate('opentelemetry-rust', this.buildContext(service));
         await this.ensureDir(join(serviceDir, 'src'));
         await this.writeRenderedFile(join(serviceDir, 'src', 'otel.rs'), otelContent);
+        
+        // Generate Rust service implementation
+        const rustServiceContent = renderTemplate('rust-service', this.buildContext(service));
+        await this.writeRenderedFile(join(serviceDir, 'src', 'main.rs'), rustServiceContent);
       } else if (service.language === 'java') {
         const otelContent = renderTemplate('opentelemetry-java', this.buildContext(service));
         await this.ensureDir(join(serviceDir, 'src', 'main', 'java', 'otel'));

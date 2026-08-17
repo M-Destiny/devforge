@@ -367,7 +367,7 @@ spec:
             - name: SERVICE_DEPENDENCIES
               value: "<%#.%>
 <%{this}%>
-<%/.%>
+<%/.%>"
 <%/service.dependencies%>
           livenessProbe:
 <%#service.healthCheck%>
@@ -396,6 +396,36 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 5
+<%#service.resources%>
+          resources:
+            requests:
+<%#service.resources.requests%>
+<%#cpu%>
+              cpu: "<%cpu%>"
+<%/cpu%>
+<%#memory%>
+              memory: "<%memory%>"
+<%/memory%>
+<%/service.resources.requests%>
+<%^service.resources.requests%>
+              memory: "128Mi"
+              cpu: "100m"
+<%/service.resources.requests%>
+            limits:
+<%#service.resources.limits%>
+<%#cpu%>
+              cpu: "<%cpu%>"
+<%/cpu%>
+<%#memory%>
+              memory: "<%memory%>"
+<%/memory%>
+<%/service.resources.limits%>
+<%^service.resources.limits%>
+              memory: "512Mi"
+              cpu: "500m"
+<%/service.resources.limits%>
+<%/service.resources%>
+<%^service.resources%>
           resources:
             requests:
               memory: "128Mi"
@@ -403,6 +433,7 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+<%/service.resources%>
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -1154,6 +1185,12 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     category: 'documentation',
     perService: true,
     outputPath: 'services/<name>/README.md',
+  },
+  'rust-service': {
+    description: 'Rust HTTP service implementation using Axum with health check and basic CRUD.',
+    category: 'docker',
+    perService: true,
+    outputPath: 'services/<name>/src/main.rs',
   },
   'opentelemetry-go': {
     description: 'OpenTelemetry Go instrumentation setup with OTLP HTTP exporter.',
@@ -2213,6 +2250,83 @@ public class OpenTelemetryConfig {
 }
 `;
 
+// Rust service implementation template
+const rustServiceTemplate = `// <%service.name%> - Rust HTTP service
+use axum::{
+    extract::State,
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tower_http::trace::TraceLayer;
+use tracing::{info, instrument};
+
+#[derive(Clone)]
+struct AppState {
+    // Add shared state here (database pool, config, etc.)
+}
+
+#[derive(Serialize, Deserialize)]
+struct HealthResponse {
+    status: String,
+    service: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Item {
+    id: String,
+    name: String,
+    description: String,
+}
+
+#[instrument]
+async fn health_check() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "healthy".to_string(),
+        service: "<%service.name%>".to_string(),
+    })
+}
+
+#[instrument]
+async fn get_items(State(_state): State<Arc<AppState>>) -> Json<Vec<Item>> {
+    Json(vec![])
+}
+
+#[instrument]
+async fn create_item(
+    State(_state): State<Arc<AppState>>,
+    Json(item): Json<Item>,
+) -> (StatusCode, Json<Item>) {
+    (StatusCode::CREATED, Json(item))
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    let state = Arc::new(AppState {});
+
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .route("/items", get(get_items).post(create_item))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let port = std::env::var("PORT").unwrap_or_else(|_| "<%service.port%>".to_string());
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
+    info!("Rust service <%service.name%> listening on port {}", port);
+
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+`;
+
 // gRPC service templates
 
 const grpcProtoTemplate = `syntax = "proto3";
@@ -3006,4 +3120,5 @@ export const templates = {
   'grpc-node-package-json': grpcNodePackageJson,
   'grpc-go-mod': grpcGoModTemplate,
   'grpc-readme': grpcReadmeTemplate,
+  'rust-service': rustServiceTemplate,
 };
