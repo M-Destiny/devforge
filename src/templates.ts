@@ -589,11 +589,11 @@ jobs:
           password: \${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract service metadata
-        id: vars
-        run: |
-          echo "SERVICE_NAME=\${{ matrix.service.name }}" >> $GITHUB_OUTPUT
-          echo "SERVICE_LANGUAGE=\\${{ matrix.service.language }}" >> $GITHUB_OUTPUT
-          echo "SERVICE_PORT=\\${{ matrix.service.port }}" >> $GITHUB_OUTPUT
+              id: vars
+              run: |
+                echo "SERVICE_NAME=\\${{ matrix.service.name }}" >> $GITHUB_OUTPUT
+                echo "SERVICE_LANGUAGE=\\${{ matrix.service.language }}" >> $GITHUB_OUTPUT
+                echo "SERVICE_PORT=\\${{ matrix.service.port }}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
