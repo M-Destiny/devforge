@@ -67,7 +67,7 @@ describe('renderTemplate', () => {
   it('renders the github-actions matrix', () => {
     const out = renderTemplate('github-actions', ctx());
     expect(out).toContain('matrix:');
-    expect(out).toContain('- api');
+    expect(out).toContain('name: api');
     expect(out).toContain('docker/build-push-action@v5');
   });
 
