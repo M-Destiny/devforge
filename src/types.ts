@@ -6,6 +6,17 @@ export interface HealthCheck {
   retries?: number;
 }
 
+export interface ResourceRequirements {
+  requests?: {
+    cpu?: string;
+    memory?: string;
+  };
+  limits?: {
+    cpu?: string;
+    memory?: string;
+  };
+}
+
 export interface Scaling {
   minReplicas?: number;
   maxReplicas?: number;
@@ -22,6 +33,7 @@ export interface ServiceSpec {
   env?: Record<string, string>;
   healthCheck?: HealthCheck;
   scaling?: Scaling;
+  resources?: ResourceRequirements;
   image?: string;
   command?: string[];
   args?: string[];

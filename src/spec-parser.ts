@@ -27,6 +27,16 @@ const ServiceSpecSchema = z.object({
   env: z.record(z.string()).optional(),
   healthCheck: HealthCheckSchema.optional(),
   scaling: ScalingSchema.optional(),
+  resources: z.object({
+    requests: z.object({
+      cpu: z.string().optional(),
+      memory: z.string().optional(),
+    }).optional(),
+    limits: z.object({
+      cpu: z.string().optional(),
+      memory: z.string().optional(),
+    }).optional(),
+  }).optional(),
   image: z.string().optional(),
   command: z.array(z.string()).optional(),
   args: z.array(z.string()).optional(),
