@@ -305,6 +305,30 @@ export class ProjectGenerator {
             await this.generateK8sSecrets();
           },
         },
+        {
+          title: 'Generating Helm _helpers.tpl',
+          task: async () => {
+            await this.generateHelmHelpers();
+          },
+        },
+        {
+          title: 'Generating cert-manager ClusterIssuer',
+          task: async () => {
+            await this.generateCertManagerClusterIssuer();
+          },
+        },
+        {
+          title: 'Generating Kyverno security policies',
+          task: async () => {
+            await this.generateKyvernoPolicies();
+          },
+        },
+        {
+          title: 'Generating GitLab CI/CD pipeline',
+          task: async () => {
+            await this.generateGitLabCI();
+          },
+        },
       ];
 
       const listr = new Listr(tasks, {
@@ -945,5 +969,43 @@ override.tf.json
         renderTemplate('k8s-secret', secretContext)
       );
     }
+  }
+
+  private async generateHelmHelpers(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    const helmDir = join(this.outputDir, 'helm', this.spec.name, 'templates');
+    await this.ensureDir(helmDir);
+    await this.writeRenderedFile(
+      join(helmDir, '_helpers.tpl'),
+      renderTemplate('helm-helpers', context)
+    );
+  }
+
+  private async generateCertManagerClusterIssuer(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    const certDir = join(this.outputDir, 'k8s', 'cert-manager');
+    await this.ensureDir(certDir);
+    await this.writeRenderedFile(
+      join(certDir, 'clusterissuer.yaml'),
+      renderTemplate('cert-manager-clusterissuer', context)
+    );
+  }
+
+  private async generateKyvernoPolicies(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    const kyvernoDir = join(this.outputDir, 'k8s', 'kyverno');
+    await this.ensureDir(kyvernoDir);
+    await this.writeRenderedFile(
+      join(kyvernoDir, 'policies.yaml'),
+      renderTemplate('kyverno-policies', context)
+    );
+  }
+
+  private async generateGitLabCI(): Promise<void> {
+    const context = this.buildContext(this.spec.services[0]);
+    await this.writeRenderedFile(
+      join(this.outputDir, '.gitlab-ci.yml'),
+      renderTemplate('gitlab-ci', context)
+    );
   }
 }

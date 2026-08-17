@@ -1210,6 +1210,30 @@ export const templateDescriptions: Record<string, Omit<TemplateMetadata, 'name'>
     perService: true,
     outputPath: 'services/<name>/src/main/java/otel/OpenTelemetryConfig.java',
   },
+  'helm-helpers': {
+    description: 'Helm _helpers.tpl with standard name, label, and selector helpers.',
+    category: 'helm',
+    perService: false,
+    outputPath: 'helm/<project.name>/templates/_helpers.tpl',
+  },
+  'cert-manager-clusterissuer': {
+    description: 'cert-manager ClusterIssuer for Let\'s Encrypt (prod + staging).',
+    category: 'kubernetes',
+    perService: false,
+    outputPath: 'k8s/cert-manager/clusterissuer.yaml',
+  },
+  'kyverno-policies': {
+    description: 'Kyverno ClusterPolicies for Pod Security Standards (Restricted).',
+    category: 'kubernetes',
+    perService: false,
+    outputPath: 'k8s/kyverno/policies.yaml',
+  },
+  'gitlab-ci': {
+    description: 'GitLab CI/CD pipeline with build, test, security scan, and deploy stages.',
+    category: 'ci',
+    perService: false,
+    outputPath: '.gitlab-ci.yml',
+  },
 };
 
 export function listTemplates(): string[] {
@@ -1587,6 +1611,329 @@ Services:
 <%#services%>
 - <%name%> on port <%port%>
 <%/services%>
+`;
+
+// Helm chart — _helpers.tpl (standard Helm helpers for chart names, labels, etc.)
+const helmHelpersTemplate = `{{/*
+Expand the name of the chart.
+*/}}
+{{- define "<%project.name%>.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+/{{/*
+Create a default fully qualified app name.
+*/}}
+{{- define "<%project.name%>.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+/{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "<%project.name%>.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+/{{/*
+Common labels
+*/}}
+{{- define "<%project.name%>.labels" -}}
+helm.sh/chart: {{ include "<%project.name%>.chart" . }}
+{{ include "<%project.name%>.name" . }}: {{ .Release.Name }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+/{{/*
+Selector labels
+*/}}
+{{- define "<%project.name%>.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "<%project.name%>.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+/{{/*
+Create the name of the service account to use
+*/}}
+{{- define "<%project.name%>.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "<%project.name%>.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+`;
+
+// cert-manager ClusterIssuer for Let's Encrypt
+const certManagerClusterIssuerTemplate = `apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@<%project.github.owner%>.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: admin@<%project.github.owner%>.com
+    privateKeySecretRef:
+      name: letsencrypt-staging
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+`;
+
+// Kyverno security policies for pod security standards
+const kyvernoPoliciesTemplate = `apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Restrict Privileged Containers
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: restrict-privileged
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      validate:
+        message: "Privileged containers are not allowed"
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+                  =(allowPrivilegeEscalation): "false"
+                  =(capabilities):
+                    =(drop):
+                      - "ALL"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root-user
+  annotations:
+    policies.kyverno.io/title: Require Non-Root User
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: non-root
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      validate:
+        message: "Containers must not run as root"
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(runAsNonRoot): "true"
+                  =(runAsUser):
+                    =(>0): true
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-readonly-root-filesystem
+  annotations:
+    policies.kyverno.io/title: Require Read-Only Root Filesystem
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: readonly-rootfs
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      validate:
+        message: "Containers must use read-only root filesystem"
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(readOnlyRootFilesystem): "true"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-host-namespaces
+  annotations:
+    policies.kyverno.io/title: Restrict Host Namespaces
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: no-host-namespaces
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      validate:
+        message: "Host namespaces are not allowed"
+        pattern:
+          spec:
+            hostNetwork: "false"
+            hostPID: "false"
+            hostIPC: "false"
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-seccomp
+  annotations:
+    policies.kyverno.io/title: Restrict Seccomp Profile
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: runtime-default-seccomp
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      validate:
+        message: "Seccomp profile must be RuntimeDefault"
+        pattern:
+          spec:
+            securityContext:
+              seccompProfile:
+                type: "RuntimeDefault"
+`;
+
+// GitLab CI/CD pipeline template
+const gitlabCiTemplate = `stages:
+  - build
+  - test
+  - security
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  REGISTRY: \$CI_REGISTRY_IMAGE
+  IMAGE_TAG: \$CI_COMMIT_SHA
+
+# Build stage
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker login -u "\$CI_REGISTRY_USER" -p "\$CI_REGISTRY_PASSWORD" \$CI_REGISTRY
+  script:
+    - |
+      for service in <%#services%><%name%> <%/services%>; do
+        echo "Building \$service..."
+        docker build -t "\$REGISTRY/\$service:\$IMAGE_TAG" -t "\$REGISTRY/\$service:latest" "./services/\$service"
+        docker push "\$REGISTRY/\$service:\$IMAGE_TAG"
+        docker push "\$REGISTRY/\$service:latest"
+      done
+  only:
+    - main
+    - merge_requests
+
+# Test stage
+test:
+  stage: test
+  image: node:20-alpine
+  script:
+    - |
+      for service in <%#services%><%name%> <%/services%>; do
+        echo "Testing \$service..."
+        cd "./services/\$service"
+        npm ci
+        npm test
+        cd ../..
+      done
+  only:
+    - main
+    - merge_requests
+
+# Security scan stage
+security:
+  stage: security
+  image: aquasec/trivy:latest
+  script:
+    - |
+      for service in <%#services%><%name%> <%/services%>; do
+        echo "Scanning \$service..."
+        trivy image --exit-code 1 --severity HIGH,CRITICAL "\$REGISTRY/\$service:\$IMAGE_TAG"
+      done
+  allow_failure: true
+  only:
+    - main
+    - merge_requests
+
+# Deploy to Kubernetes
+deploy:
+  stage: deploy
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "\$KUBE_CONFIG" | base64 -d > /tmp/kubeconfig
+    - export KUBECONFIG=/tmp/kubeconfig
+  script:
+    - |
+      for service in <%#services%><%name%> <%/services%>; do
+        echo "Deploying \$service..."
+        kubectl set image deployment/\$service \$service=\$REGISTRY/\$service:\$IMAGE_TAG -n <%project.namespace%>
+        kubectl rollout status deployment/\$service -n <%project.namespace%> --timeout=300s
+      done
+    - kubectl apply -f k8s/ingress.yaml
+  environment:
+    name: production
+    url: https://api.<%project.namespace%>.example.com
+  only:
+    - main
+  when: manual
 `;
 
 // Grafana dashboard ConfigMap — provisioned alongside Prometheus so a fresh
@@ -3121,4 +3468,8 @@ export const templates = {
   'grpc-go-mod': grpcGoModTemplate,
   'grpc-readme': grpcReadmeTemplate,
   'rust-service': rustServiceTemplate,
+  'helm-helpers': helmHelpersTemplate,
+  'cert-manager-clusterissuer': certManagerClusterIssuerTemplate,
+  'kyverno-policies': kyvernoPoliciesTemplate,
+  'gitlab-ci': gitlabCiTemplate,
 };
