@@ -3066,6 +3066,120 @@ networks:
     attachable: true
 `;
 
+// Istio service mesh templates
+const istioVirtualServiceTemplate = `apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+spec:
+  hosts:
+    - <%service.name%>
+    - <%service.name%>.<%project.namespace%>.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: <%service.name%>.<%project.namespace%>.svc.cluster.local
+            port:
+              number: <%service.port%>
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: connect-failure,refused-stream,unavailable,cancelled,retriable-status-codes
+      timeout: 10s
+      fault:
+        delay:
+          percentage:
+            value: 0.1
+          fixedDelay: 5s
+        abort:
+          percentage:
+            value: 0.1
+          httpStatus: 500
+`;
+
+const istioDestinationRuleTemplate = `apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+  labels:
+    app: <%service.name%>
+spec:
+  host: <%service.name%>.<%project.namespace%>.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 1000
+      http:
+        h2UpgradePolicy: UPGRADE
+        http1MaxPendingRequests: 1000
+        http2MaxRequests: 1000
+    loadBalancer:
+      simple: LEAST_REQUEST
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+  subsets:
+    - name: v1
+      labels:
+        version: v1
+    - name: v2
+      labels:
+        version: v2
+`;
+
+const istioPeerAuthenticationTemplate = `apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+spec:
+  selector:
+    matchLabels:
+      app: <%service.name%>
+  mtls:
+    mode: STRICT
+`;
+
+const istioAuthorizationPolicyTemplate = `apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: <%service.name%>
+  namespace: <%project.namespace%>
+spec:
+  selector:
+    matchLabels:
+      app: <%service.name%>
+  rules:
+    - from:
+        - source:
+            principals:
+<%#service.dependencies%>
+              - cluster.local/ns/<%project.namespace%>/sa/<%{this}%>
+<%/service.dependencies%>
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            paths: ["/health", "/ready", "/metrics", "/*"]
+    - when:
+        - key: request.auth.principal
+          values: ["cluster.local/ns/<%project.namespace%>/sa/<%service.name%>"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/ready"]
+`;
+
 export const templates = {
   'docker-compose': dockerComposeTemplate,
   'k8s-deployment': k8sDeploymentTemplate,
@@ -3121,4 +3235,8 @@ export const templates = {
   'grpc-go-mod': grpcGoModTemplate,
   'grpc-readme': grpcReadmeTemplate,
   'rust-service': rustServiceTemplate,
+  'istio-virtualservice': istioVirtualServiceTemplate,
+  'istio-destinationrule': istioDestinationRuleTemplate,
+  'istio-peerauthentication': istioPeerAuthenticationTemplate,
+  'istio-authorizationpolicy': istioAuthorizationPolicyTemplate,
 };
